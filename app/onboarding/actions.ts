@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 
+import { getAuthenticatedUser } from "@/lib/auth/get-authenticated-user";
+
 function getBootstrapErrorCode(message: string) {
   switch (message) {
     case "invalid_organization_name":
@@ -45,10 +47,9 @@ export async function createOrganization(formData: FormData) {
 
   const supabase = await createClient();
 
-  const { data: authData, error: authError } =
-    await supabase.auth.getClaims();
+  const user = await getAuthenticatedUser(supabase);
 
-  if (authError || !authData?.claims?.sub) {
+  if (!user) {
     redirect("/login");
   }
 

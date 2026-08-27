@@ -5,15 +5,18 @@ import { createClient } from "@/lib/supabase/server";
 
 import { logout } from "./actions";
 
+import Link from "next/link";
+
+import { getAuthenticatedUser } from "@/lib/auth/get-authenticated-user";
+
 export default async function DashboardPage() {
   const supabase = await createClient();
 
-  const { data: authData, error: authError } =
-    await supabase.auth.getClaims();
+  const user = await getAuthenticatedUser(supabase);
 
-  if (authError || !authData?.claims?.sub) {
-    redirect("/login");
-  }
+    if (!user) {
+        redirect("/login");
+    }
 
   const context = await getDashboardContext(supabase);
 
@@ -86,6 +89,14 @@ export default async function DashboardPage() {
             </p>
           </div>
 
+          <div className="flex items-center gap-3">
+            <Link
+                href="/projects/new"
+                className="rounded-md bg-black px-4 py-2 text-sm text-white"
+            >
+                Добавить проект
+            </Link>
+
           <form action={logout}>
             <button
               type="submit"
@@ -94,6 +105,7 @@ export default async function DashboardPage() {
               Выйти
             </button>
           </form>
+          </div>
         </header>
 
         <section className="mt-10">

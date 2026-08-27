@@ -4,6 +4,7 @@ import { getPostLoginRoute } from "@/lib/auth/get-post-login-route";
 import { createClient } from "@/lib/supabase/server";
 
 import { createOrganization } from "./actions";
+import { getAuthenticatedUser } from "@/lib/auth/get-authenticated-user";
 
 type OnboardingPageProps = {
   searchParams: Promise<{
@@ -28,9 +29,8 @@ export default async function OnboardingPage({
 }: OnboardingPageProps) {
   const supabase = await createClient();
 
-  const { data, error } = await supabase.auth.getClaims();
-
-  if (error || !data?.claims?.sub) {
+  const user = await getAuthenticatedUser(supabase);
+  if (!user) {
     redirect("/login");
   }
 
