@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { getPostLoginRoute } from "@/lib/auth/get-post-login-route";
 
 import { createClient } from "@/lib/supabase/server";
 
@@ -28,7 +29,8 @@ export async function login(formData: FormData) {
   if (error) {
     redirect("/login?error=invalid_credentials");
   }
+  const destination = await getPostLoginRoute(supabase);
 
   revalidatePath("/", "layout");
-  redirect("/dashboard");
+  redirect(destination);
 }
