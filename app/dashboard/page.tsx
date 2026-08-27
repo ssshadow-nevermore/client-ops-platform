@@ -1,22 +1,26 @@
 import { redirect } from "next/navigation";
 
+import { AppShell } from "@/components/app-shell";
+import { Icon } from "@/components/ui/icon";
+import {
+  ButtonLink,
+  EmptyState,
+  GlassCard,
+  SectionHeader,
+  StatCard,
+  StatusBadge,
+} from "@/components/ui/primitives";
+import { getAuthenticatedUser } from "@/lib/auth/get-authenticated-user";
 import { getDashboardContext } from "@/lib/dashboard/get-dashboard-context";
 import { createClient } from "@/lib/supabase/server";
 
-import { logout } from "./actions";
-
-import Link from "next/link";
-
-import { getAuthenticatedUser } from "@/lib/auth/get-authenticated-user";
-
 export default async function DashboardPage() {
   const supabase = await createClient();
-
   const user = await getAuthenticatedUser(supabase);
 
-    if (!user) {
-        redirect("/login");
-    }
+  if (!user) {
+    redirect("/login");
+  }
 
   const context = await getDashboardContext(supabase);
 
@@ -25,114 +29,95 @@ export default async function DashboardPage() {
   }
 
   if (context.type === "project") {
-    return (
-      <main className="min-h-screen p-8">
-        <div className="mx-auto max-w-5xl">
-          <div className="flex items-start justify-between gap-6">
-            <div>
-              <p className="text-sm text-gray-500">
-                Проект
-              </p>
-
-              <h1 className="mt-1 text-3xl font-semibold">
-                {context.projectName}
-              </h1>
-
-              <p className="mt-2 text-sm text-gray-600">
-                Роль: {context.role}
-              </p>
-            </div>
-
-            <form action={logout}>
-              <button
-                type="submit"
-                className="rounded-md border px-4 py-2 text-sm"
-              >
-                Выйти
-              </button>
-            </form>
-          </div>
-        </div>
-      </main>
-    );
+    redirect(`/projects/${context.projectId}`);
   }
 
-  const { count: projectCount, error: projectCountError } =
-    await supabase
-      .from("projects")
-      .select("id", {
-        count: "exact",
-        head: true,
-      })
-      .eq("organization_id", context.organizationId)
-      .eq("status", "active");
+  const { data: projectRows, error: projectsError } = await supabase
+    .from("projects")
+    .select("id, name, slug, production_url, status, created_at")
+    .eq("organization_id", context.organizationId)
+    .eq("status", "active")
+    .order("created_at", { ascending: false });
 
-  if (projectCountError) {
-    throw projectCountError;
+  if (projectsError) {
+    throw projectsError;
   }
+
+  const projects = projectRows ?? [];
+  const projectCount = projects.length;
 
   return (
-    <main className="min-h-screen p-8">
-      <div className="mx-auto max-w-5xl">
-        <header className="flex items-start justify-between gap-6">
-          <div>
-            <p className="text-sm text-gray-500">
-              Рабочее пространство
-            </p>
-
-            <h1 className="mt-1 text-3xl font-semibold">
-              {context.organizationName}
-            </h1>
-
-            <p className="mt-2 text-sm text-gray-600">
-              Роль: {context.role}
+    <AppShell
+      organizationName={context.organizationName}
+      projectRole={context.role}
+      userEmail={user.email}
+    >
+      <div className="page-container">
+        <div className="dashboard-hero">
+          <div className="dashboard-hero-copy">
+            <p className="eyebrow">Workspace overview</p>
+            <h1 className="dashboard-hero-title">{context.organizationName}</h1>
+            <p className="dashboard-hero-description">
+              Спокойный обзор проектов и точка входа в ежедневное сопровождение. Технические сигналы появятся здесь после подключения модулей.
             </p>
           </div>
-
-          <div className="flex items-center gap-3">
-            <Link
-                href="/projects/new"
-                className="rounded-md bg-black px-4 py-2 text-sm text-white"
-            >
-                Добавить проект
-            </Link>
-
-          <form action={logout}>
-            <button
-              type="submit"
-              className="rounded-md border px-4 py-2 text-sm"
-            >
-              Выйти
-            </button>
-          </form>
+          <div className="dashboard-hero-actions">
+            <ButtonLink href="/projects/new">
+              <Icon name="plus" size={16} /> Добавить проект
+            </ButtonLink>
           </div>
-        </header>
+        </div>
 
-        <section className="mt-10">
-          <div className="rounded-lg border p-6">
-            <p className="text-sm text-gray-500">
-              Активные проекты
-            </p>
+        <div className="stat-grid">
+          <StatCard label="Активные проекты" value={projectCount} detail="Доступны в этом workspace" icon="layers" tone="accent" />
+          <StatCard label="Ваш уровень доступа" value={context.role} detail="Организационный контекст" icon="shield" />
+          <StatCard label="Project Health" value="Not set" detail="Health checks ещё не настроены" icon="activity" tone="quiet" />
+          <StatCard label="Integrations" value="Not configured" detail="Integration backend ещё не настроен" icon="plug" tone="quiet" />
+        </div>
 
-            <p className="mt-2 text-3xl font-semibold">
-              {projectCount ?? 0}
-            </p>
+        <SectionHeader
+          title="Ваши проекты"
+          description="Откройте карточку, чтобы перейти к проектному control plane."
+          action={projectCount > 0 ? <ButtonLink href="/projects/new" variant="ghost"><Icon name="plus" size={15} /> Новый проект</ButtonLink> : undefined}
+        />
+
+        {projectCount > 0 ? (
+          <div className="project-grid">
+            {projects.map((project) => (
+              <GlassCard
+                className="project-card"
+                href={`/projects/${project.id}`}
+                key={project.id}
+              >
+                <div className="project-card-topline">
+                  <div>
+                    <h2 className="project-card-title">{project.name}</h2>
+                    <p className="project-card-slug">/{project.slug}</p>
+                  </div>
+                  <StatusBadge label={project.status === "active" ? "Active" : project.status} status={project.status} />
+                </div>
+
+                <div className="project-card-url">
+                  <Icon className="icon-muted" name="globe" size={14} />
+                  <span>{project.production_url ?? "Production URL не подключён"}</span>
+                </div>
+
+                <div className="project-card-footer">
+                  <span className="project-card-health"><span className="status-badge-dot" /> Health not configured</span>
+                  <Icon className="project-card-arrow" name="arrow-up-right" size={16} />
+                </div>
+              </GlassCard>
+            ))}
           </div>
-        </section>
-
-        {(projectCount ?? 0) === 0 && (
-          <section className="mt-8 rounded-lg border border-dashed p-8">
-            <h2 className="text-lg font-semibold">
-              Проектов пока нет
-            </h2>
-
-            <p className="mt-2 max-w-xl text-sm text-gray-600">
-              Добавьте первый клиентский сайт, чтобы начать
-              управлять его состоянием, контентом и интеграциями.
-            </p>
-          </section>
+        ) : (
+          <EmptyState
+            action={<ButtonLink href="/projects/new"><Icon name="plus" size={16} /> Создать первый проект</ButtonLink>}
+            description="Добавьте существующий клиентский сайт, чтобы управлять его контекстом, доступом и будущими интеграциями из одного workspace."
+            icon="layers"
+            title="Проектов пока нет"
+          />
         )}
       </div>
-    </main>
+    </AppShell>
   );
 }

@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { AppShell } from "@/components/app-shell";
+import { Icon } from "@/components/ui/icon";
+import { Button, FormField, GlassCard, PageHeader } from "@/components/ui/primitives";
+import { getAuthenticatedUser } from "@/lib/auth/get-authenticated-user";
 import { getDashboardContext } from "@/lib/dashboard/get-dashboard-context";
 import { createClient } from "@/lib/supabase/server";
 
 import { createProject } from "./actions";
-
-import { getAuthenticatedUser } from "@/lib/auth/get-authenticated-user";
 
 type NewProjectPageProps = {
   searchParams: Promise<{
@@ -17,22 +19,17 @@ type NewProjectPageProps = {
 const errorMessages: Record<string, string> = {
   invalid_form: "Проверьте введённые данные.",
   invalid_name: "Название проекта должно содержать от 2 до 120 символов.",
-  invalid_slug:
-    "Slug должен содержать 3–63 символа: строчные латинские буквы, цифры и дефисы.",
-  invalid_url:
-    "Production URL должен быть корректным адресом, начинающимся с http:// или https://.",
-  slug_unavailable:
-    "Проект с таким slug уже существует в этой организации.",
+  invalid_slug: "Slug должен содержать 3–63 символа: строчные латинские буквы, цифры и дефисы.",
+  invalid_url: "Production URL должен быть корректным адресом, начинающимся с http:// или https://.",
+  slug_unavailable: "Проект с таким slug уже существует в этой организации.",
   not_allowed: "У вас нет прав на создание проекта.",
   unknown: "Не удалось создать проект. Попробуйте ещё раз.",
 };
 
-export default async function NewProjectPage({
-  searchParams,
-}: NewProjectPageProps) {
+export default async function NewProjectPage({ searchParams }: NewProjectPageProps) {
   const supabase = await createClient();
-
   const user = await getAuthenticatedUser(supabase);
+
   if (!user) {
     redirect("/login");
   }
@@ -43,128 +40,58 @@ export default async function NewProjectPage({
     redirect("/onboarding");
   }
 
-  if (
-    context.type !== "organization" ||
-    context.role !== "OWNER"
-  ) {
+  if (context.type !== "organization" || context.role !== "OWNER") {
     redirect("/dashboard");
   }
 
   const params = await searchParams;
-
-  const errorMessage = params.error
-    ? errorMessages[params.error]
-    : undefined;
+  const errorMessage = params.error ? errorMessages[params.error] : undefined;
 
   return (
-    <main className="min-h-screen p-8">
-      <div className="mx-auto max-w-2xl">
-        <Link
-          href="/dashboard"
-          className="text-sm text-gray-600 hover:text-black"
-        >
-          ← Назад к Dashboard
+    <AppShell
+      organizationName={context.organizationName}
+      projectRole={context.role}
+      userEmail={user.email}
+    >
+      <div className="page-container">
+        <Link className="back-link" href="/dashboard">
+          <Icon name="arrow-left" size={15} /> Назад к workspace
         </Link>
 
-        <div className="mt-8">
-          <p className="text-sm text-gray-500">
-            {context.organizationName}
-          </p>
+        <PageHeader
+          eyebrow={context.organizationName}
+          title="Новый проект"
+          description="Добавьте существующий клиентский сайт в рабочее пространство. Production URL можно подключить позже."
+        />
 
-          <h1 className="mt-1 text-3xl font-semibold">
-            Новый проект
-          </h1>
-
-          <p className="mt-2 text-sm text-gray-600">
-            Добавьте существующий клиентский сайт в рабочее пространство.
-          </p>
-        </div>
-
-        <form
-          action={createProject}
-          className="mt-8 space-y-5"
-        >
-          <div>
-            <label
-              htmlFor="name"
-              className="block text-sm font-medium"
-            >
-              Название проекта
-            </label>
-
-            <input
-              id="name"
-              name="name"
-              type="text"
-              required
-              minLength={2}
-              maxLength={120}
-              className="mt-2 w-full rounded-md border px-3 py-2"
-              placeholder="Парикмахерская Ассоль"
-            />
+        <GlassCard className="form-card form-card-wide">
+          <div className="callout">
+            <Icon className="callout-icon" name="shield" size={17} />
+            <span>Создание проекта проходит через защищённый server action и secure RPC. Frontend не пишет напрямую в таблицы.</span>
           </div>
 
-          <div>
-            <label
-              htmlFor="slug"
-              className="block text-sm font-medium"
-            >
-              Slug
-            </label>
+          <form action={createProject} className="form-stack mt-24">
+            <FormField id="name" label="Название проекта" required>
+              <input className="input" id="name" maxLength={120} minLength={2} name="name" placeholder="Парикмахерская Ассоль" required type="text" />
+            </FormField>
 
-            <input
-              id="slug"
-              name="slug"
-              type="text"
-              required
-              minLength={3}
-              maxLength={63}
-              pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-              className="mt-2 w-full rounded-md border px-3 py-2"
-              placeholder="assol"
-            />
+            <FormField id="slug" label="Project slug" hint="Внутренний идентификатор: строчные латинские буквы, цифры и дефисы." required>
+              <input className="input" id="slug" maxLength={63} minLength={3} name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="assol" required type="text" />
+            </FormField>
 
-            <p className="mt-1 text-xs text-gray-500">
-              Используется как внутренний идентификатор проекта.
-              Строчные латинские буквы, цифры и дефисы.
-            </p>
-          </div>
+            <FormField id="productionUrl" label="Production URL" hint="Необязательно. Можно добавить, когда сайт будет готов к подключению.">
+              <input className="input" id="productionUrl" name="productionUrl" placeholder="https://example.com" type="url" />
+            </FormField>
 
-          <div>
-            <label
-              htmlFor="productionUrl"
-              className="block text-sm font-medium"
-            >
-              Production URL
-            </label>
+            {errorMessage && <p className="form-error" role="alert">{errorMessage}</p>}
 
-            <input
-              id="productionUrl"
-              name="productionUrl"
-              type="url"
-              className="mt-2 w-full rounded-md border px-3 py-2"
-              placeholder="https://example.com"
-            />
-
-            <p className="mt-1 text-xs text-gray-500">
-              Необязательно. Можно добавить позже.
-            </p>
-          </div>
-
-          {errorMessage && (
-            <p className="text-sm text-red-600">
-              {errorMessage}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            className="rounded-md bg-black px-4 py-2 text-sm text-white"
-          >
-            Создать проект
-          </button>
-        </form>
+            <div className="form-actions">
+              <Link className="button button-ghost" href="/dashboard">Отмена</Link>
+              <Button type="submit">Создать проект <Icon name="arrow-up-right" size={16} /></Button>
+            </div>
+          </form>
+        </GlassCard>
       </div>
-    </main>
+    </AppShell>
   );
 }

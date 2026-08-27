@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
 
 import { getPostLoginRoute } from "@/lib/auth/get-post-login-route";
+import { getAuthenticatedUser } from "@/lib/auth/get-authenticated-user";
 import { createClient } from "@/lib/supabase/server";
 
+import { Icon } from "@/components/ui/icon";
+import { Button, FormField } from "@/components/ui/primitives";
+
 import { createOrganization } from "./actions";
-import { getAuthenticatedUser } from "@/lib/auth/get-authenticated-user";
 
 type OnboardingPageProps = {
   searchParams: Promise<{
@@ -15,21 +18,17 @@ type OnboardingPageProps = {
 const errorMessages: Record<string, string> = {
   invalid_form: "Проверьте введённые данные.",
   invalid_name: "Название организации должно содержать от 2 до 120 символов.",
-  invalid_slug:
-    "Slug должен содержать 3–63 символа: строчные латинские буквы, цифры и дефисы.",
+  invalid_slug: "Slug должен содержать 3–63 символа: строчные латинские буквы, цифры и дефисы.",
   invalid_display_name: "Имя пользователя слишком длинное.",
   slug_unavailable: "Такой slug уже занят. Выберите другой.",
-  bootstrap_not_allowed:
-    "Для этого аккаунта создание первой организации недоступно.",
+  bootstrap_not_allowed: "Для этого аккаунта создание первой организации недоступно.",
   unknown: "Не удалось создать организацию. Попробуйте ещё раз.",
 };
 
-export default async function OnboardingPage({
-  searchParams,
-}: OnboardingPageProps) {
+export default async function OnboardingPage({ searchParams }: OnboardingPageProps) {
   const supabase = await createClient();
-
   const user = await getAuthenticatedUser(supabase);
+
   if (!user) {
     redirect("/login");
   }
@@ -41,103 +40,66 @@ export default async function OnboardingPage({
   }
 
   const params = await searchParams;
-  const errorMessage = params.error
-    ? errorMessages[params.error]
-    : undefined;
+  const errorMessage = params.error ? errorMessages[params.error] : undefined;
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
-      <div className="w-full max-w-lg">
-        <h1 className="text-2xl font-semibold">
-          Настройка рабочего пространства
-        </h1>
-
-        <p className="mt-2 text-sm text-gray-600">
-          Создайте свою первую организацию, чтобы начать добавлять проекты.
-        </p>
-
-        <form
-          action={createOrganization}
-          className="mt-8 space-y-5"
-        >
-          <div>
-            <label
-              htmlFor="displayName"
-              className="block text-sm font-medium"
-            >
-              Ваше имя
-            </label>
-
-            <input
-              id="displayName"
-              name="displayName"
-              type="text"
-              autoComplete="name"
-              maxLength={120}
-              className="mt-2 w-full rounded-md border px-3 py-2"
-              placeholder="Иван"
-            />
+    <main className="setup-layout">
+      <aside className="setup-aside">
+        <div className="setup-aside-content">
+          <div className="brand">
+            <span className="brand-mark"><Icon name="sparkles" size={17} /></span>
+            <span className="brand-copy">
+              <span className="brand-name">Client Ops</span>
+              <span className="brand-caption">Control plane</span>
+            </span>
           </div>
 
-          <div>
-            <label
-              htmlFor="name"
-              className="block text-sm font-medium"
-            >
-              Название организации
-            </label>
+          <p className="eyebrow">Your operating layer</p>
+          <h1 className="setup-aside-title">Соберите свой control plane.</h1>
+          <p className="setup-aside-description">
+            Организация — это ваш workspace для клиентских проектов, доступа команды и прозрачного сопровождения.
+          </p>
 
-            <input
-              id="name"
-              name="name"
-              type="text"
-              required
-              minLength={2}
-              maxLength={120}
-              className="mt-2 w-full rounded-md border px-3 py-2"
-              placeholder="Vi Studio"
-            />
+          <div className="setup-aside-points">
+            <div className="setup-point"><span className="setup-point-mark"><Icon name="layers" size={14} /></span> Все проекты в одном рабочем пространстве</div>
+            <div className="setup-point"><span className="setup-point-mark"><Icon name="shield" size={14} /></span> Разделение доступа на уровне проекта</div>
+            <div className="setup-point"><span className="setup-point-mark"><Icon name="activity" size={14} /></span> Готовая основа для health и audit</div>
           </div>
+        </div>
+        <p className="setup-aside-footer">Workspace setup · Step 01</p>
+      </aside>
 
-          <div>
-            <label
-              htmlFor="slug"
-              className="block text-sm font-medium"
-            >
-              Slug
-            </label>
-
-            <input
-              id="slug"
-              name="slug"
-              type="text"
-              required
-              minLength={3}
-              maxLength={63}
-              pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-              className="mt-2 w-full rounded-md border px-3 py-2"
-              placeholder="vi-studio"
-            />
-
-            <p className="mt-1 text-xs text-gray-500">
-              Строчные латинские буквы, цифры и дефисы.
+      <section className="setup-form-side">
+        <div className="setup-form-wrap">
+          <div className="setup-form-header">
+            <p className="eyebrow">First-time setup</p>
+            <h2 className="setup-form-title">Создайте workspace</h2>
+            <p className="setup-form-description">
+              Начните с названия организации и короткого slug. Остальное можно настроить позже.
             </p>
           </div>
 
-          {errorMessage && (
-            <p className="text-sm text-red-600">
-              {errorMessage}
-            </p>
-          )}
+          <form action={createOrganization} className="glass-panel form-card form-stack">
+            <FormField id="displayName" label="Ваше имя" hint="Можно изменить в профиле позже.">
+              <input autoComplete="name" className="input" id="displayName" maxLength={120} name="displayName" placeholder="Иван" type="text" />
+            </FormField>
 
-          <button
-            type="submit"
-            className="w-full rounded-md bg-black px-4 py-2 text-white"
-          >
-            Создать рабочее пространство
-          </button>
-        </form>
-      </div>
+            <FormField id="name" label="Название организации" required>
+              <input className="input" id="name" maxLength={120} minLength={2} name="name" placeholder="Vi Studio" required type="text" />
+            </FormField>
+
+            <FormField id="slug" label="Workspace slug" hint="Строчные латинские буквы, цифры и дефисы." required>
+              <input className="input" id="slug" maxLength={63} minLength={3} name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" placeholder="vi-studio" required type="text" />
+            </FormField>
+
+            {errorMessage && <p className="form-error" role="alert">{errorMessage}</p>}
+
+            <Button type="submit">
+              Создать workspace <Icon name="arrow-up-right" size={16} />
+            </Button>
+          </form>
+        </div>
+      </section>
     </main>
   );
 }

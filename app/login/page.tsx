@@ -1,3 +1,6 @@
+import { FormField, Button } from "@/components/ui/primitives";
+import { Icon } from "@/components/ui/icon";
+
 import { login } from "./actions";
 
 type LoginPageProps = {
@@ -6,79 +9,68 @@ type LoginPageProps = {
   }>;
 };
 
-export default async function LoginPage({
-  searchParams,
-}: LoginPageProps) {
+export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const hasError = params.error === "invalid_credentials";
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-6">
-      <div className="w-full max-w-sm">
-        <h1 className="text-2xl font-semibold">
-          Client Ops Platform
-        </h1>
+    <main className="auth-page">
+      <div className="auth-shell">
+        <div className="auth-brand">
+          <span className="brand-mark"><Icon name="sparkles" size={17} /></span>
+          <span className="brand-copy">
+            <span className="brand-name">Client Ops</span>
+            <span className="brand-caption">Control plane</span>
+          </span>
+        </div>
 
-        <p className="mt-2 text-sm text-gray-600">
-          Войдите в свой аккаунт.
-        </p>
-
-        {hasError && (
-          <p
-            role="alert"
-            className="mt-4 text-sm text-red-600"
-          >
-            Не удалось войти. Проверьте данные и попробуйте снова.
+        <section aria-labelledby="login-title" className="auth-card">
+          <p className="eyebrow">Welcome back</p>
+          <h1 className="auth-card-title" id="login-title">Войти в платформу</h1>
+          <p className="auth-card-description">
+            Единое пространство для проектов, контента и технического контроля.
           </p>
-        )}
 
-        <form
-          action={login}
-          className="mt-6 space-y-4"
-        >
-          <div>
-            <label
-              htmlFor="email"
-              className="block text-sm font-medium"
-            >
-              Email
-            </label>
+          {hasError && (
+            <p className="form-error" role="alert">
+              Не удалось войти. Проверьте email и пароль, затем попробуйте ещё раз.
+            </p>
+          )}
 
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              className="mt-1 w-full rounded-md border px-3 py-2"
-            />
-          </div>
+          <form action={login} className="auth-form">
+            <FormField id="email" label="Email" required>
+              <input
+                autoComplete="email"
+                className="input"
+                id="email"
+                name="email"
+                placeholder="you@company.com"
+                required
+                type="email"
+              />
+            </FormField>
 
-          <div>
-            <label
-              htmlFor="password"
-              className="block text-sm font-medium"
-            >
-              Пароль
-            </label>
+            <FormField id="password" label="Пароль" required>
+              <input
+                autoComplete="current-password"
+                className="input"
+                id="password"
+                name="password"
+                placeholder="Введите пароль"
+                required
+                type="password"
+              />
+            </FormField>
 
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              className="mt-1 w-full rounded-md border px-3 py-2"
-            />
-          </div>
+            <Button type="submit">
+              Войти в workspace <Icon name="arrow-up-right" size={16} />
+            </Button>
+          </form>
+        </section>
 
-          <button
-            type="submit"
-            className="w-full rounded-md bg-black px-4 py-2 text-white"
-          >
-            Войти
-          </button>
-        </form>
+        <p className="auth-footer">
+          <strong>Server-side session.</strong> Сессия проверяется на сервере.
+        </p>
       </div>
     </main>
   );

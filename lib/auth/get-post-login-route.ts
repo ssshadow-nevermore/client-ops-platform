@@ -32,9 +32,7 @@ export async function getPostLoginRoute(
   }
 
   if (projectMembership) {
-    // Пока Project UI ещё не построен.
-    // Позже CLIENT будет отправляться сразу в доступный проект.
-    return "/dashboard";
+    return `/projects/${projectMembership.project_id}`;
   }
 
   return "/onboarding";
