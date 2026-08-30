@@ -2,7 +2,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(10);
+select plan(25);
 
 -- ============================================================
 -- Test identities
@@ -134,6 +134,147 @@ select ok(
       and c.relname = 'project_health'
   ),
   'RLS is enabled on project_health'
+);
+
+
+-- ============================================================
+-- Privilege assertions
+-- Table privileges must remain narrowly scoped by caller role.
+-- ============================================================
+
+select ok(
+  has_table_privilege(
+    'service_role',
+    'public.project_health',
+    'SELECT'
+  ),
+  'service_role can select project health'
+);
+
+select ok(
+  has_table_privilege(
+    'service_role',
+    'public.project_health',
+    'UPDATE'
+  ),
+  'service_role can update project health'
+);
+
+select ok(
+  not has_table_privilege(
+    'service_role',
+    'public.project_health',
+    'INSERT'
+  ),
+  'service_role cannot insert project health'
+);
+
+select ok(
+  not has_table_privilege(
+    'service_role',
+    'public.project_health',
+    'DELETE'
+  ),
+  'service_role cannot delete project health'
+);
+
+select ok(
+  not has_table_privilege(
+    'service_role',
+    'public.project_health',
+    'TRUNCATE'
+  ),
+  'service_role cannot truncate project health'
+);
+
+select ok(
+  not has_table_privilege(
+    'service_role',
+    'public.project_health',
+    'REFERENCES'
+  ),
+  'service_role cannot reference project health'
+);
+
+select ok(
+  not has_table_privilege(
+    'service_role',
+    'public.project_health',
+    'TRIGGER'
+  ),
+  'service_role cannot create triggers on project health'
+);
+
+select ok(
+  has_table_privilege(
+    'authenticated',
+    'public.project_health',
+    'SELECT'
+  ),
+  'authenticated can select project health'
+);
+
+select ok(
+  not has_table_privilege(
+    'authenticated',
+    'public.project_health',
+    'UPDATE'
+  ),
+  'authenticated cannot update project health'
+);
+
+select ok(
+  not has_table_privilege(
+    'authenticated',
+    'public.project_health',
+    'INSERT'
+  ),
+  'authenticated cannot insert project health'
+);
+
+select ok(
+  not has_table_privilege(
+    'authenticated',
+    'public.project_health',
+    'DELETE'
+  ),
+  'authenticated cannot delete project health'
+);
+
+select ok(
+  not has_table_privilege(
+    'anon',
+    'public.project_health',
+    'SELECT'
+  ),
+  'anon cannot select project health'
+);
+
+select ok(
+  not has_table_privilege(
+    'anon',
+    'public.project_health',
+    'UPDATE'
+  ),
+  'anon cannot update project health'
+);
+
+select ok(
+  not has_table_privilege(
+    'anon',
+    'public.project_health',
+    'INSERT'
+  ),
+  'anon cannot insert project health'
+);
+
+select ok(
+  not has_table_privilege(
+    'anon',
+    'public.project_health',
+    'DELETE'
+  ),
+  'anon cannot delete project health'
 );
 
 
