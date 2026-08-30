@@ -12,6 +12,10 @@ import {
 } from "@/components/ui/primitives";
 import { getAuthenticatedUser } from "@/lib/auth/get-authenticated-user";
 import { getDashboardContext } from "@/lib/dashboard/get-dashboard-context";
+import {
+  getHealthStatusLabel,
+  getProjectHealthByProjectIds,
+} from "@/lib/projects/health";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardPage() {
@@ -45,6 +49,10 @@ export default async function DashboardPage() {
 
   const projects = projectRows ?? [];
   const projectCount = projects.length;
+  const healthByProjectId = await getProjectHealthByProjectIds(
+    supabase,
+    projects.map((project) => project.id),
+  );
 
   return (
     <AppShell
@@ -71,7 +79,7 @@ export default async function DashboardPage() {
         <div className="stat-grid">
           <StatCard label="Активные проекты" value={projectCount} detail="Доступны в этом workspace" icon="layers" tone="accent" />
           <StatCard label="Ваш уровень доступа" value={context.role} detail="Организационный контекст" icon="shield" />
-          <StatCard label="Project Health" value="Not set" detail="Health checks ещё не настроены" icon="activity" tone="quiet" />
+          <StatCard label="Project Health" value="Not set" detail="Workspace aggregate deferred" icon="activity" tone="quiet" />
           <StatCard label="Integrations" value="Not configured" detail="Integration backend ещё не настроен" icon="plug" tone="quiet" />
         </div>
 
@@ -83,31 +91,43 @@ export default async function DashboardPage() {
 
         {projectCount > 0 ? (
           <div className="project-grid">
-            {projects.map((project) => (
-              <GlassCard
-                className="project-card"
-                href={`/projects/${project.id}`}
-                key={project.id}
-              >
-                <div className="project-card-topline">
-                  <div>
-                    <h2 className="project-card-title">{project.name}</h2>
-                    <p className="project-card-slug">/{project.slug}</p>
+            {projects.map((project) => {
+              const health = healthByProjectId.get(project.id);
+
+              return (
+                <GlassCard
+                  className="project-card"
+                  href={`/projects/${project.id}`}
+                  key={project.id}
+                >
+                  <div className="project-card-topline">
+                    <div>
+                      <h2 className="project-card-title">{project.name}</h2>
+                      <p className="project-card-slug">/{project.slug}</p>
+                    </div>
+                    <StatusBadge label={project.status === "active" ? "Active" : project.status} status={project.status} />
                   </div>
-                  <StatusBadge label={project.status === "active" ? "Active" : project.status} status={project.status} />
-                </div>
 
-                <div className="project-card-url">
-                  <Icon className="icon-muted" name="globe" size={14} />
-                  <span>{project.production_url ?? "Production URL не подключён"}</span>
-                </div>
+                  <div className="project-card-url">
+                    <Icon className="icon-muted" name="globe" size={14} />
+                    <span>{project.production_url ?? "Production URL не подключён"}</span>
+                  </div>
 
-                <div className="project-card-footer">
-                  <span className="project-card-health"><span className="status-badge-dot" /> Health not configured</span>
-                  <Icon className="project-card-arrow" name="arrow-up-right" size={16} />
-                </div>
-              </GlassCard>
-            ))}
+                  <div className="project-card-footer">
+                    <span className="project-card-health">
+                      <span className={health ? `status-badge-dot status-${health.overall_status}` : "status-badge-dot"} />
+                      {health ? `Health: ${getHealthStatusLabel(health.overall_status)}` : "Health unavailable"}
+                    </span>
+                    {health?.http_status_code !== null && health?.http_status_code !== undefined && (
+                      <span className="project-card-http">
+                        HTTP: {getHealthStatusLabel(health.http_status)} · {health.http_status_code}
+                      </span>
+                    )}
+                    <Icon className="project-card-arrow" name="arrow-up-right" size={16} />
+                  </div>
+                </GlassCard>
+              );
+            })}
           </div>
         ) : (
           <EmptyState

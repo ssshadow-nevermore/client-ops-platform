@@ -954,6 +954,12 @@ button:disabled {
   font-size: 10px;
 }
 
+.project-card-http {
+  color: #8e99ad;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+}
+
 .project-card-arrow {
   color: #6e7890;
   transition: color 180ms ease, transform 180ms ease;
@@ -1624,11 +1630,127 @@ button:disabled {
   padding: 19px;
 }
 
+.health-overall-card {
+  align-items: flex-start;
+  min-height: 180px;
+}
+
+.health-overall-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.health-overall-meta {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: end;
+  gap: 9px;
+}
+
+.health-overall-meta-label {
+  color: #778297;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+}
+
 .health-card-title {
   margin: 0;
   color: #e5e9f3;
   font-size: 14px;
   font-weight: 620;
+}
+
+.health-card-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+}
+
+.health-card-details {
+  display: grid;
+  min-height: 46px;
+  align-content: center;
+  gap: 9px;
+  margin-top: 22px;
+  color: #c0c8d7;
+  font-size: 12px;
+}
+
+.health-detail-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.health-detail-row strong {
+  color: #e8ecf5;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.health-detail-muted {
+  color: #8792a7;
+  font-size: 11px;
+}
+
+.health-action {
+  display: grid;
+  max-width: 360px;
+  justify-items: end;
+  gap: 7px;
+}
+
+.health-action-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.health-action-hint,
+.health-action-result {
+  margin: 0;
+  color: #7d889c;
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.health-action-result-error {
+  color: #efb2bd;
+}
+
+.health-action-result-success {
+  color: #a8ddbc;
+}
+
+.health-action-spinner {
+  animation: health-action-spin 900ms linear infinite;
+}
+
+.project-health-summary {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 8px;
+  margin-top: 15px;
+}
+
+.project-health-summary-line {
+  color: #b6c0d1;
+  font-size: 11px;
+}
+
+.project-health-summary-muted {
+  color: #7e899d;
+  font-size: 10px;
 }
 
 .health-card-message {
@@ -1966,6 +2088,12 @@ button:disabled {
   }
 }
 
+@keyframes health-action-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 1020px) {
   .app-topbar,
   .app-content {
@@ -2017,6 +2145,19 @@ button:disabled {
 
   .page-header-actions {
     justify-content: flex-start;
+  }
+
+  .health-action {
+    justify-items: start;
+  }
+
+  .health-action-controls {
+    justify-content: flex-start;
+  }
+
+  .health-action-hint,
+  .health-action-result {
+    text-align: left;
   }
 
   .dashboard-hero {

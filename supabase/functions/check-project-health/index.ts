@@ -2,6 +2,7 @@
 
 import { createClient } from "@supabase/supabase-js";
 
+import { getHealthCheckCooldownRetryAfterSeconds } from "./cooldown.ts";
 import { checkHttpTarget, HttpCheckError } from "./http.ts";
 
 import {
@@ -129,14 +130,9 @@ Deno.serve(async (request) => {
     "SUPABASE_ANON_KEY",
   );
 
-  const supabaseServiceRoleKey = Deno.env.get(
-    "SUPABASE_SERVICE_ROLE_KEY",
-  );
-
   if (
     !supabaseUrl ||
-    !supabaseAnonKey ||
-    !supabaseServiceRoleKey
+    !supabaseAnonKey
   ) {
     console.error(
       "Missing Supabase environment variables",
@@ -170,29 +166,6 @@ Deno.serve(async (request) => {
           Authorization: authorization,
         },
       },
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    },
-  );
-
-  // ============================================================
-  // Privileged Supabase client
-  //
-  // IMPORTANT:
-  //
-  // This client is NOT used to determine whether the caller has
-  // access to the project.
-  //
-  // It is used only for the controlled project_health write after
-  // the user has already passed authentication and RLS checks.
-  // ============================================================
-
-  const adminClient = createClient(
-    supabaseUrl,
-    supabaseServiceRoleKey,
-    {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
@@ -237,7 +210,7 @@ Deno.serve(async (request) => {
     error: healthError,
   } = await userClient
     .from("project_health")
-    .select("project_id")
+    .select("project_id, last_checked_at")
     .eq("project_id", projectId)
     .maybeSingle();
 
@@ -273,6 +246,35 @@ Deno.serve(async (request) => {
       {
         status: 404,
         headers: jsonHeaders,
+      },
+    );
+  }
+
+  // ============================================================
+  // Manual check cooldown
+  //
+  // This is intentionally evaluated only after authentication
+  // and the RLS-protected health.read authorization lookup above.
+  // It therefore does not disclose inaccessible project state.
+  // ============================================================
+
+  const retryAfterSeconds = getHealthCheckCooldownRetryAfterSeconds(
+    health.last_checked_at,
+  );
+
+  if (retryAfterSeconds !== null) {
+    return new Response(
+      JSON.stringify({
+        error: "Health check cooldown is active",
+        code: "check_cooldown",
+        retryAfterSeconds,
+      }),
+      {
+        status: 429,
+        headers: {
+          ...jsonHeaders,
+          "Retry-After": String(retryAfterSeconds),
+        },
       },
     );
   }
@@ -399,6 +401,46 @@ Deno.serve(async (request) => {
       },
     );
   }
+
+  // ============================================================
+  // Privileged Supabase client
+  //
+  // IMPORTANT:
+  //
+  // This client is created only after authentication, the
+  // RLS-backed project authorization gate, cooldown, project state,
+  // and target validation have completed.
+  // It is never used to determine access.
+  // ============================================================
+
+  const supabaseServiceRoleKey = Deno.env.get(
+    "SUPABASE_SERVICE_ROLE_KEY",
+  );
+
+  if (!supabaseServiceRoleKey) {
+    console.error("Missing Supabase service-role environment variable");
+
+    return new Response(
+      JSON.stringify({
+        error: "Server configuration error",
+      }),
+      {
+        status: 500,
+        headers: jsonHeaders,
+      },
+    );
+  }
+
+  const adminClient = createClient(
+    supabaseUrl,
+    supabaseServiceRoleKey,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    },
+  );
 
   // ============================================================
   // HTTP Health Check

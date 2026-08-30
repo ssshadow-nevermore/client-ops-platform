@@ -141,7 +141,8 @@ ProjectMembership
 ```
 
 `ProjectSettings` создаётся при необходимости или вместе с Project.
-`ProjectHealth` создаётся только при первом health check или подключении Health subsystem.
+`ProjectHealth` создаётся автоматически trigger-ом вместе с Project, но не выполняет
+health check.
 
 Developer получает доступ к проекту.
 
@@ -392,36 +393,39 @@ Recent Activity
 
 # 12. Flow: Project Health Check
 
-Background job:
+Текущий manual flow из Developer UI:
 
 ```text
-Scheduler
+Health UI
 ↓
-Run Checks
+Authenticated server action
 ↓
-Normalize Results
+Edge Function with user JWT
 ↓
-Store HealthChecks
+auth.getUser
 ↓
-Update ProjectHealth
+RLS + health.read authorization
 ↓
-Create/Update Incident
+production_url and SSRF/DNS validation
+↓
+Controlled HTTP request
+↓
+Controlled project_health write
+↓
+RLS read by UI
 ```
 
-Например:
+В текущем MVP выполняется только HTTP signal. SSL, Deployment, Critical Errors и
+Integration Freshness остаются `not_configured` до реализации соответствующих
+providers/checks. `health_checks`, `health_incidents` и Scheduler остаются future.
+
+HTTP result сохраняет:
 
 ```text
-HTTP check
-→ passed
-
-SSL
-→ passed
-
-Vercel
-→ failed
-
-Sentry
-→ warning
+http_status
+http_status_code
+http_response_time_ms
+last_checked_at
 ```
 
 Для Project Health v1 учитываются только следующие сигналы:
@@ -438,14 +442,8 @@ Deployment и Critical errors появляются после подключен
 Недоступность отдельной integration относится к Integration Health и не должна
 автоматически превращать сам сайт в `critical`.
 
-Итог:
-
-```text
-Project Health = critical
-```
-
-В этом примере `critical` вызван failed deployment; предупреждение Sentry относится к
-Integration Health и само по себе не повышает Project Health до `critical`.
+`overall_status` не выставляется в `healthy` на основании одного HTTP check и остаётся
+`unknown`, пока остальные Health v1 signals не реализованы.
 
 ---
 

@@ -929,18 +929,17 @@ MIME mismatch
 
 ```text
 project_health
-health_checks
-health_incidents
 ```
 
-`project_health` создаётся при первом health check или подключении Health subsystem.
-До этого у проекта может отсутствовать текущий технический статус.
+`project_health` создаётся автоматически вместе с каждым Project и является canonical
+1:1 snapshot. `health_checks` и `health_incidents` остаются будущими таблицами и пока
+не входят в реализованный MVP.
 
 ---
 
 # 49. Первые Health Checks
 
-Минимальный набор сигналов Project Health v1:
+Запланированный набор сигналов Project Health v1:
 
 ```text
 HTTP availability
@@ -950,24 +949,28 @@ Critical errors
 Integration freshness
 ```
 
-Deployment и Critical errors получают данные после подключения Vercel и Sentry.
-Integration freshness применяется к подключённым providers. Synthetic monitoring,
-forms, checkout, booking и Playwright flows остаются future.
+В текущем MVP реализован только HTTP availability через Edge Function. Deployment и
+Critical errors требуют Vercel/Sentry integrations, SSL и integration freshness пока
+не выполняются. Synthetic monitoring, forms, checkout, booking и Playwright flows
+остаются future.
 
 ---
 
 # 50. Health Status
 
 ```text
-healthy
-warning
-critical
+not_configured
 unknown
+healthy
+degraded
+critical
 ```
 
 ---
 
 # 51. Health Incident Logic
+
+Будущая incident logic после добавления `health_checks` и `health_incidents`:
 
 Если проверка ломается:
 
@@ -991,7 +994,7 @@ resolve incident
 
 # 52. Scheduler
 
-Нужен простой scheduled/background mechanism.
+Scheduled/background mechanism нужен для будущих автоматических проверок.
 
 Не строить distributed job system.
 
@@ -999,13 +1002,13 @@ resolve incident
 
 # 53. Health UI
 
-Developer видит:
+Developer видит текущий canonical snapshot:
 
 ```text
 Overall Health
 Checks
-Open Incidents
-Resolved Incidents
+HTTP status and response time
+Last checked timestamp
 ```
 
 CLIENT этого раздела не видит.
@@ -1014,7 +1017,7 @@ CLIENT этого раздела не видит.
 
 # 54. Этап 9 Definition of Done
 
-Можно специально:
+Для текущего реализованного slice можно:
 
 ```text
 указать недоступный URL
@@ -1024,11 +1027,11 @@ CLIENT этого раздела не видит.
 
 ```text
 health becomes critical
-incident created
-dashboard reflects problem
+overall status remains unknown
+dashboard reflects the real HTTP snapshot
 ```
 
-После восстановления:
+После добавления остальных signals и incident storage:
 
 ```text
 incident resolved

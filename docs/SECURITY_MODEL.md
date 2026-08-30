@@ -63,6 +63,35 @@ Browser считается недоверенной средой.
 
 Все критические проверки выполняются на сервере и дополнительно защищаются RLS.
 
+### Current Project Health request flow
+
+```text
+Health UI
+→ authenticated server action
+→ Edge Function with user JWT
+→ auth.getUser
+→ RLS + health.read authorization
+→ production_url
+→ SSRF/DNS validation
+→ controlled HTTP request
+→ service-role controlled project_health write
+→ RLS read by UI
+```
+
+Вызов из Next.js выполняется через authenticated server-side Supabase client. SDK
+передаёт текущий user JWT в Edge Function; access token не передаётся в browser
+JavaScript. `service role` создаётся и используется только внутри Edge Function для
+контролируемой записи после authentication, RLS и `health.read` authorization. Он не
+используется для authorization и не попадает в browser.
+
+`project_health` остаётся единственным canonical source для текущего Health snapshot.
+Пока реализован только HTTP signal, `overall_status` после проверки остаётся
+`unknown`, даже если HTTP healthy. Redirect targets проходят повторную validation;
+localhost, private/reserved IP и internal hostnames отклоняются. Проверка снижает
+SSRF-риск, но не заявляет абсолютную DNS-rebinding immunity, поскольку стандартный
+`fetch` выполняет собственное DNS connection resolution. Browser direct writes в
+`project_health` запрещены.
+
 ---
 
 ## 4. Authentication
@@ -604,6 +633,12 @@ Rate limiting нужен минимум для:
 * expensive external integration sync.
 
 Не нужно вводить чрезмерно сложную систему на MVP, но basic abuse protection обязательна.
+
+Для manual Project Health check в текущем MVP действует 30-секундный cooldown на
+проекте по `project_health.last_checked_at`. Authorization выполняется до проверки
+cooldown; при активном cooldown Edge Function возвращает HTTP 429, `code =
+check_cooldown` и `Retry-After`. DNS lookup, outbound fetch и project_health write при
+этом не выполняются.
 
 ---
 

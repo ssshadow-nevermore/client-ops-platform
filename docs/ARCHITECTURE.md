@@ -771,10 +771,11 @@ Integration freshness
 Внутренний статус проекта:
 
 ```text
-healthy
-warning
-critical
+not_configured
 unknown
+healthy
+degraded
+critical
 ```
 
 Не нужно сразу строить сложную систему synthetic monitoring.
@@ -790,8 +791,42 @@ unknown
 
 Но они не входят в базовую архитектурную необходимость MVP.
 
-Project Health и Integration Health разделены. Недоступность отдельного provider может
-дать `warning` для Project Health, но не означает автоматически, что сам сайт сломан.
+Project Health и Integration Health разделены. Недоступность отдельного provider не
+означает автоматически, что сам сайт сломан; до реализации соответствующего signal
+его поле остаётся `not_configured`.
+
+### Current implemented MVP slice
+
+Сейчас canonical snapshot хранится в `project_health`. Строка `project_health` создаётся
+автоматически при создании проекта. В current implementation работает только HTTP
+signal; SSL, deployment, critical errors и integration freshness остаются
+`not_configured`, пока соответствующие providers/checks не реализованы.
+
+Проверка из Developer UI проходит следующим потоком:
+
+```text
+Health UI
+→ authenticated server action
+→ Edge Function with user JWT
+→ auth.getUser
+→ RLS + health.read authorization
+→ production_url
+→ SSRF/DNS validation
+→ controlled HTTP request
+→ service-role controlled project_health write
+→ RLS read by UI
+```
+
+`service role` никогда не попадает в browser и не используется для authorization.
+Пока работает только HTTP, `overall_status` остаётся `unknown` после check и не
+вычисляется frontend по HTTP status. Redirect targets проходят ту же validation;
+localhost, private/reserved IP и internal hostnames отклоняются. Это существенно
+снижает SSRF-риск, но не является абсолютной защитой от DNS rebinding: стандартный
+`fetch` выполняет собственное DNS connection resolution.
+
+Manual checks используют 30-секундный cooldown по `last_checked_at` как best-effort MVP
+abuse protection. Это не atomic и не distributed concurrency lock: параллельные
+запросы в редком race condition могут пройти одновременно.
 
 ---
 

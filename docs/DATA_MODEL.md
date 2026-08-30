@@ -254,8 +254,8 @@ archived
 ```
 
 Техническое состояние проекта не хранится в `projects`. Источником истины для него
-является отдельная таблица `project_health`, которая создаётся при первом health check
-или при подключении Health subsystem.
+является отдельная таблица `project_health`, которая автоматически создаётся как
+1:1 row при создании проекта.
 
 Dashboard получает состояние через объединение:
 
@@ -868,26 +868,27 @@ Platform Dashboard работает с нашим normalized snapshot, а не �
 
 # 25. project_health
 
-Одна актуальная запись на проект. Она создаётся при первом health check или подключении
-Health subsystem и является источником истины для текущего технического состояния.
+Одна актуальная запись на проект. Она автоматически создаётся trigger-ом при создании
+Project и является источником истины для текущего технического состояния.
 
 Поля:
 
 ```text
 project_id PRIMARY KEY
-
 organization_id
-
-status
-
-site_reachable
-ssl_valid
-deployment_ok
-critical_errors
-integration_freshness
-
+overall_status
+http_status
+ssl_status
+deployment_status
+critical_errors_status
+integration_freshness_status
+http_status_code
+http_response_time_ms
+ssl_expires_at
+critical_error_count
 last_checked_at
-
+details JSONB
+created_at
 updated_at
 ```
 
@@ -896,6 +897,8 @@ updated_at
 ---
 
 # 26. health_checks
+
+Future history table; it is not part of the current implemented Health slice.
 
 История отдельных проверок.
 
@@ -941,6 +944,8 @@ unknown
 ---
 
 # 27. health_incidents
+
+Future incident table; it is not part of the current implemented Health slice.
 
 Отдельная сущность для проблем, требующих внимания.
 

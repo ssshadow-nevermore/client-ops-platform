@@ -1,62 +1,224 @@
 import { notFound, redirect } from "next/navigation";
+import type { ReactNode } from "react";
 
-import { Icon } from "@/components/ui/icon";
-import { EmptyState, GlassCard, PageHeader, SectionHeader, StatusBadge } from "@/components/ui/primitives";
+import { Icon, type IconName } from "@/components/ui/icon";
+import {
+  EmptyState,
+  GlassCard,
+  PageHeader,
+  SectionHeader,
+  StatusBadge,
+} from "@/components/ui/primitives";
 import { getProjectRequestContext } from "@/lib/projects/get-project-request-context";
+import {
+  formatHealthTimestamp,
+  getHealthStatusLabel,
+  getProjectHealth,
+  type HealthStatus,
+} from "@/lib/projects/health";
 import { hasProjectPermission } from "@/lib/projects/get-project-context";
+
+import { HealthCheckAction } from "./health-check-action";
 
 type HealthPageProps = { params: Promise<{ projectId: string }> };
 
-const checks = [
-  { title: "HTTP", icon: "globe" as const, message: "No health checks configured", caption: "Website availability will appear after setup." },
-  { title: "SSL", icon: "shield" as const, message: "Not configured", caption: "Certificate validity is not being checked yet." },
-  { title: "Deployment", icon: "layers" as const, message: "Connect provider", caption: "Deployment status requires a Vercel integration." },
-  { title: "Critical Errors", icon: "activity" as const, message: "Connect provider", caption: "Error signals require a Sentry integration." },
-  { title: "Integration Freshness", icon: "refresh" as const, message: "Not configured", caption: "Freshness is measured after integrations are connected." },
-];
+function HealthSignalCard({
+  caption,
+  children,
+  icon,
+  status,
+  title,
+}: {
+  caption: string;
+  children: ReactNode;
+  icon: IconName;
+  status: HealthStatus;
+  title: string;
+}) {
+  return (
+    <GlassCard className="health-card">
+      <div className="health-card-header">
+        <div className="health-card-heading">
+          <span className="signal-card-icon">
+            <Icon name={icon} size={16} />
+          </span>
+          <h2 className="health-card-title">{title}</h2>
+        </div>
+        <StatusBadge
+          compact
+          label={getHealthStatusLabel(status)}
+          status={status}
+        />
+      </div>
+      <div className="health-card-details">{children}</div>
+      <p className="health-card-caption">{caption}</p>
+    </GlassCard>
+  );
+}
 
 export default async function HealthPage({ params }: HealthPageProps) {
   const { projectId } = await params;
-  const { context, user } = await getProjectRequestContext(projectId);
+  const { context, supabase, user } = await getProjectRequestContext(projectId);
 
   if (!user) redirect("/login");
   if (!context) notFound();
-  if (!hasProjectPermission(context, "health.read")) redirect(`/projects/${projectId}`);
+  if (!hasProjectPermission(context, "health.read")) {
+    redirect(`/projects/${projectId}`);
+  }
+
+  const project = context.project;
+  const health = await getProjectHealth(supabase, projectId);
+  const canCheck = Boolean(
+    health && project.status === "active" && project.production_url,
+  );
+  const unavailableReason = !health
+    ? "health"
+    : !project.production_url
+    ? "production_url"
+    : project.status !== "active"
+    ? "inactive"
+    : undefined;
+  const lastCheckedLabel = formatHealthTimestamp(health?.last_checked_at);
 
   return (
     <div className="page-container">
       <PageHeader
-        eyebrow={context.project.name}
+        eyebrow={project.name}
         title="Project Health"
-        description="Технические сигналы проекта в одном месте. Пока проверки не настроены, состояние остаётся честно неопределённым."
-        actions={<StatusBadge label="Unknown" status="unknown" />}
+        description="Канонический health snapshot проекта. Overall status читается из project_health и не выводится из одного HTTP-сигнала."
+        actions={
+          <HealthCheckAction
+            canCheck={canCheck}
+            projectId={projectId}
+            settingsHref={`/projects/${projectId}/settings`}
+            unavailableReason={unavailableReason}
+          />
+        }
       />
 
-      <GlassCard className="dashboard-hero">
-        <div className="dashboard-hero-copy">
-          <p className="eyebrow">Overall health</p>
-          <h2 className="dashboard-hero-title">Not configured</h2>
-          <p className="dashboard-hero-description">Проект ещё не подключён к Health subsystem. Настройте provider, чтобы получать реальные проверки, а не предположения.</p>
-        </div>
-        <span className="signal-card-icon"><Icon name="activity" size={19} /></span>
-      </GlassCard>
-
-      <SectionHeader title="Checks" description="Каждая карточка отражает реальную готовность конкретного сигнала." />
-      <div className="health-grid">
-        {checks.map((check) => (
-          <GlassCard className="health-card" key={check.title}>
-            <div className="health-card-header">
-              <div className="health-card-header"><span className="signal-card-icon"><Icon name={check.icon} size={16} /></span><h2 className="health-card-title">{check.title}</h2></div>
-              <StatusBadge label={check.message === "Connect provider" ? "Not configured" : "Unknown"} status="unknown" compact />
+      {health ? (
+        <GlassCard className="dashboard-hero health-overall-card">
+          <div className="dashboard-hero-copy">
+            <p className="eyebrow">Overall health</p>
+            <div className="health-overall-line">
+              <h2 className="dashboard-hero-title">
+                {getHealthStatusLabel(health.overall_status)}
+              </h2>
+              <StatusBadge
+                label={getHealthStatusLabel(health.overall_status)}
+                status={health.overall_status}
+              />
             </div>
-            <p className="health-card-message">{check.message}</p>
-            <p className="health-card-caption">{check.caption}</p>
-          </GlassCard>
-        ))}
-      </div>
+            <p className="dashboard-hero-description">
+              {lastCheckedLabel
+                ? `Last checked ${lastCheckedLabel}. `
+                : "Health check ещё не выполнялся. "}
+              HTTP не меняет overall status самостоятельно.
+            </p>
+          </div>
+          <div className="health-overall-meta">
+            <span className="signal-card-icon">
+              <Icon name="activity" size={19} />
+            </span>
+            <span className="health-overall-meta-label">project_health</span>
+          </div>
+        </GlassCard>
+      ) : (
+        <EmptyState
+          icon="activity"
+          title="Health snapshot unavailable"
+          description="Для этого project context не удалось прочитать canonical project_health row. Новые health-значения не подставляются."
+        />
+      )}
 
-      <SectionHeader title="Open incidents" description="Incident history появится после первого запуска проверок." />
-      <EmptyState icon="shield" title="Инцидентов пока нет" description="Невозможно подтвердить отсутствие проблем до настройки health checks. Здесь будут отображаться только реальные incidents." />
+      {health && (
+        <>
+          <SectionHeader
+            title="Checks"
+            description="Значения ниже отображают только поля, сохранённые в project_health."
+          />
+          <div className="health-grid">
+            <HealthSignalCard
+              caption="HTTP snapshot from the latest controlled check."
+              icon="globe"
+              status={health.http_status}
+              title="HTTP"
+            >
+              <div className="health-detail-row">
+                {health.http_status_code !== null && (
+                  <strong>HTTP {health.http_status_code}</strong>
+                )}
+                {health.http_response_time_ms !== null && (
+                  <span>{health.http_response_time_ms} ms</span>
+                )}
+              </div>
+              <div className="health-detail-muted">
+                {lastCheckedLabel
+                  ? `Last checked ${lastCheckedLabel}`
+                  : "Not checked yet"}
+              </div>
+            </HealthSignalCard>
+
+            <HealthSignalCard
+              caption="SSL status will become available when the SSL signal is implemented."
+              icon="shield"
+              status={health.ssl_status}
+              title="SSL"
+            >
+              <div className="health-detail-row">
+                {health.ssl_expires_at
+                  ? `Expires ${formatHealthTimestamp(health.ssl_expires_at) ?? "Not available"}`
+                  : "No expiry recorded"}
+              </div>
+            </HealthSignalCard>
+
+            <HealthSignalCard
+              caption="Deployment signal is populated by the deployment provider integration."
+              icon="layers"
+              status={health.deployment_status}
+              title="Deployment"
+            >
+              <div className="health-detail-row">
+                Provider status not recorded
+              </div>
+            </HealthSignalCard>
+
+            <HealthSignalCard
+              caption="Error signal is populated by the monitoring provider integration."
+              icon="activity"
+              status={health.critical_errors_status}
+              title="Critical Errors"
+            >
+              <div className="health-detail-row">
+                {health.critical_error_count === null
+                  ? "Error count not recorded"
+                  : `${health.critical_error_count} critical errors recorded`}
+              </div>
+            </HealthSignalCard>
+
+            <HealthSignalCard
+              caption="Freshness is measured after provider integrations are connected."
+              icon="refresh"
+              status={health.integration_freshness_status}
+              title="Integration Freshness"
+            >
+              <div className="health-detail-row">
+                Freshness value not recorded
+              </div>
+            </HealthSignalCard>
+          </div>
+
+          <SectionHeader
+            title="Open incidents"
+            description="Incident history появится после реализации health incident storage."
+          />
+          <EmptyState
+            icon="shield"
+            title="Incidents not available yet"
+            description="Этот MVP пока показывает canonical project_health snapshot; отдельный incident backend ещё не подключён."
+          />
+        </>
+      )}
     </div>
   );
 }

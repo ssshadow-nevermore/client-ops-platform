@@ -11,6 +11,11 @@ import {
   StatusBadge,
 } from "@/components/ui/primitives";
 import { getProjectRequestContext } from "@/lib/projects/get-project-request-context";
+import {
+  formatHealthTimestamp,
+  getHealthStatusLabel,
+  getProjectHealth,
+} from "@/lib/projects/health";
 import { formatProjectDate } from "@/lib/projects/queries";
 
 type ProjectOverviewProps = {
@@ -19,7 +24,7 @@ type ProjectOverviewProps = {
 
 export default async function ProjectOverviewPage({ params }: ProjectOverviewProps) {
   const { projectId } = await params;
-  const { context, user } = await getProjectRequestContext(projectId);
+  const { context, supabase, user } = await getProjectRequestContext(projectId);
 
   if (!user) redirect("/login");
   if (!context) {
@@ -31,6 +36,10 @@ export default async function ProjectOverviewPage({ params }: ProjectOverviewPro
   }
 
   const project = context.project;
+  const health = context.permissions.includes("health.read")
+    ? await getProjectHealth(supabase, projectId)
+    : null;
+  const healthLastChecked = formatHealthTimestamp(health?.last_checked_at);
 
   return (
     <div className="page-container">
@@ -87,7 +96,15 @@ export default async function ProjectOverviewPage({ params }: ProjectOverviewPro
         <GlassCard className="signal-card" href={context.permissions.includes("health.read") ? `/projects/${projectId}/health` : undefined} interactive={context.permissions.includes("health.read")}>
           <span className="signal-card-icon"><Icon name="activity" size={17} /></span>
           <h2 className="signal-card-title">Project Health</h2>
-          <p className="signal-card-text">No health checks configured. HTTP, SSL и deployment signals появятся после подключения Health subsystem.</p>
+          {health ? (
+            <div className="project-health-summary">
+              <StatusBadge label={getHealthStatusLabel(health.overall_status)} status={health.overall_status} compact />
+              <span className="project-health-summary-line">HTTP: {getHealthStatusLabel(health.http_status)}{health.http_status_code !== null ? ` · ${health.http_status_code}` : ""}</span>
+              <span className="project-health-summary-muted">{healthLastChecked ? `Last checked ${healthLastChecked}` : "Not checked yet"}</span>
+            </div>
+          ) : (
+            <p className="signal-card-text">Health snapshot unavailable for this project context.</p>
+          )}
           {context.permissions.includes("health.read") && <span className="signal-card-action">Открыть Health <Icon name="arrow-up-right" size={13} /></span>}
         </GlassCard>
         <GlassCard className="signal-card" href={context.permissions.includes("content.read") ? `/projects/${projectId}/content` : undefined} interactive={context.permissions.includes("content.read")}>
@@ -99,7 +116,7 @@ export default async function ProjectOverviewPage({ params }: ProjectOverviewPro
         <GlassCard className="signal-card" href={context.permissions.includes("integrations.read") ? `/projects/${projectId}/integrations` : undefined} interactive={context.permissions.includes("integrations.read")}>
           <span className="signal-card-icon"><Icon name="plug" size={17} /></span>
           <h2 className="signal-card-title">Integrations</h2>
-          <p className="signal-card-text">GitHub, Vercel, Supabase и Sentry готовы к подключению. OAuth flows пока не включены.</p>
+          <p className="signal-card-text">GitHub, Vercel, Supabase и Sentry доступны как будущие integration points. OAuth flows пока не включены.</p>
           {context.permissions.includes("integrations.read") && <span className="signal-card-action">Настроить integrations <Icon name="arrow-up-right" size={13} /></span>}
         </GlassCard>
       </div>
@@ -107,7 +124,7 @@ export default async function ProjectOverviewPage({ params }: ProjectOverviewPro
       <SectionHeader title="Next steps" description="Минимальная последовательность для подключения существующего сайта." />
       <GlassCard className="callout">
         <Icon className="callout-icon" name="sparkles" size={17} />
-        <span>Добавьте production URL в настройках, затем подключите provider integrations. До этого платформа корректно показывает `Not configured` и не подменяет отсутствие данных фиктивными статусами.</span>
+        <span>{project.production_url ? "Production URL подключён. Следующий шаг — подключить provider integrations для дополнительных Health signals." : "Добавьте production URL в настройках, затем подключите provider integrations. До этого платформа корректно показывает `Not configured` и не подменяет отсутствие данных фиктивными статусами."}</span>
       </GlassCard>
     </div>
   );
