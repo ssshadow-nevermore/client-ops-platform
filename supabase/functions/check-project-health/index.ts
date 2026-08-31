@@ -6,13 +6,13 @@ import { getHealthCheckCooldownRetryAfterSeconds } from "./cooldown.ts";
 import { checkHttpTarget, HttpCheckError } from "./http.ts";
 import { calculateOverallStatus, type HealthStatus } from "./overall.ts";
 import {
-  checkSslTarget,
   createUnknownSslResult,
   resolveFinalSslTarget,
   type SslCheckResult,
   toPublicSslFields,
   toSafeSslResult,
 } from "./ssl.ts";
+import { checkSslTargetWithConfiguredTransport } from "./remote-ssl.ts";
 
 import {
   type ResolvedProductionTarget,
@@ -571,6 +571,14 @@ Deno.serve(async (request) => {
   // ============================================================
 
   let sslResult: SslCheckResult;
+  const remoteSslProbeUrl = Deno.env.get("HEALTH_SSL_PROBE_URL");
+  const remoteSslProbeSecret = Deno.env.get("HEALTH_SSL_PROBE_SECRET");
+  const remoteSslProbe = remoteSslProbeUrl && remoteSslProbeSecret
+    ? {
+      url: remoteSslProbeUrl,
+      secret: remoteSslProbeSecret,
+    }
+    : null;
 
   try {
     const finalSslTarget = await resolveFinalSslTarget(
@@ -578,7 +586,10 @@ Deno.serve(async (request) => {
       httpResult.finalUrl,
     );
 
-    sslResult = await checkSslTarget(finalSslTarget);
+    sslResult = await checkSslTargetWithConfiguredTransport(
+      finalSslTarget,
+      remoteSslProbe,
+    );
   } catch {
     /*
      * HTTP has already completed safely. If the final SSL target cannot

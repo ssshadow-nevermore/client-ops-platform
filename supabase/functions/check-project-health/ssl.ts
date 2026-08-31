@@ -57,7 +57,12 @@ export type SslDiagnosticReason =
   | "tls_connect_throw"
   | "tls_deadline_exceeded"
   | "no_validated_addresses"
-  | "ssl_target_resolution_error";
+  | "ssl_target_resolution_error"
+  | "ssl_probe_timeout"
+  | "ssl_probe_request_error"
+  | "ssl_probe_http_error"
+  | "ssl_probe_invalid_response"
+  | "ssl_probe_configuration";
 
 export type TlsPeerCertificate = {
   subject?: unknown;
@@ -189,6 +194,11 @@ export function getSafeSslDiagnosticCode(error: unknown): string | null {
   const code = getErrorCode(error)?.toUpperCase();
 
   return code !== undefined && SAFE_DIAGNOSTIC_CODES.has(code) ? code : null;
+}
+
+export function isSafeSslCertificateCode(value: unknown): value is string {
+  return typeof value === "string" &&
+    CERTIFICATE_ERROR_CODES.has(value.toUpperCase());
 }
 
 export function createUnknownSslResult(
