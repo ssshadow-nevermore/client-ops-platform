@@ -10,6 +10,7 @@ import {
   runProjectHealthCheck,
   type HealthCheckActionResult,
 } from "./actions";
+import { shouldRefreshHealthSnapshot } from "@/lib/projects/health-check-action";
 
 type HealthCheckActionProps = {
   canCheck: boolean;
@@ -42,7 +43,7 @@ export function HealthCheckAction({
       const nextResult = await runProjectHealthCheck(projectId);
       setResult(nextResult);
 
-      if (nextResult.ok || nextResult.snapshotUpdated) {
+      if (shouldRefreshHealthSnapshot(nextResult)) {
         router.refresh();
       }
     });

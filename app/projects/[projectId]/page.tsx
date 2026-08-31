@@ -99,7 +99,7 @@ export default async function ProjectOverviewPage({ params }: ProjectOverviewPro
           {health ? (
             <div className="project-health-summary">
               <StatusBadge label={getHealthStatusLabel(health.overall_status)} status={health.overall_status} compact />
-              <span className="project-health-summary-line">HTTP: {getHealthStatusLabel(health.http_status)}{health.http_status_code !== null ? ` · ${health.http_status_code}` : ""}</span>
+              <span className="project-health-summary-line">HTTP: {getHealthStatusLabel(health.http_status)}{health.http_status_code !== null ? ` · ${health.http_status_code}` : ""} · SSL: {getHealthStatusLabel(health.ssl_status)}</span>
               <span className="project-health-summary-muted">{healthLastChecked ? `Last checked ${healthLastChecked}` : "Not checked yet"}</span>
             </div>
           ) : (

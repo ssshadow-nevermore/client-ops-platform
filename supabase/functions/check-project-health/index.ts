@@ -4,6 +4,15 @@ import { createClient } from "@supabase/supabase-js";
 
 import { getHealthCheckCooldownRetryAfterSeconds } from "./cooldown.ts";
 import { checkHttpTarget, HttpCheckError } from "./http.ts";
+import { calculateOverallStatus, type HealthStatus } from "./overall.ts";
+import {
+  checkSslTarget,
+  createUnknownSslResult,
+  resolveFinalSslTarget,
+  type SslCheckResult,
+  toPublicSslFields,
+  toSafeSslResult,
+} from "./ssl.ts";
 
 import {
   type ResolvedProductionTarget,
@@ -14,13 +23,6 @@ import {
 type RequestBody = {
   projectId?: string;
 };
-
-type HealthStatus =
-  | "not_configured"
-  | "unknown"
-  | "healthy"
-  | "degraded"
-  | "critical";
 
 const jsonHeaders = {
   "Content-Type": "application/json",
@@ -210,7 +212,17 @@ Deno.serve(async (request) => {
     error: healthError,
   } = await userClient
     .from("project_health")
-    .select("project_id, last_checked_at")
+    .select(
+      `
+        project_id,
+        last_checked_at,
+        http_status,
+        ssl_status,
+        deployment_status,
+        critical_errors_status,
+        integration_freshness_status
+      `,
+    )
     .eq("project_id", projectId)
     .maybeSingle();
 
@@ -458,17 +470,22 @@ Deno.serve(async (request) => {
 
       /*
        * A failed outbound check is a real HTTP health result.
-       *
-       * Overall project health remains unknown because HTTP is
-       * currently only one of several planned Health signals.
        */
+      const overallStatus = calculateOverallStatus({
+        http_status: "critical",
+        ssl_status: health.ssl_status,
+        deployment_status: health.deployment_status,
+        critical_errors_status: health.critical_errors_status,
+        integration_freshness_status: health.integration_freshness_status,
+      });
+
       const {
         data: updatedHealth,
         error: updateError,
       } = await adminClient
         .from("project_health")
         .update({
-          overall_status: "unknown",
+          overall_status: overallStatus,
           http_status: "critical",
           http_status_code: null,
           http_response_time_ms: null,
@@ -549,10 +566,48 @@ Deno.serve(async (request) => {
     httpResult.statusCode,
   );
 
+  // ============================================================
+  // SSL Health Check
+  // ============================================================
+
+  let sslResult: SslCheckResult;
+
+  try {
+    const finalSslTarget = await resolveFinalSslTarget(
+      productionTarget,
+      httpResult.finalUrl,
+    );
+
+    sslResult = await checkSslTarget(finalSslTarget);
+  } catch {
+    /*
+     * HTTP has already completed safely. If the final SSL target cannot
+     * be resolved again, the certificate state is not determinable.
+     */
+    sslResult = createUnknownSslResult("ssl_target_resolution_error");
+  }
+
+  if (sslResult.status === "unknown") {
+    console.warn("SSL health check could not be determined", {
+      reason: sslResult.diagnosticReason ?? "ssl_unknown",
+      code: sslResult.diagnosticCode ?? null,
+    });
+  }
+
+  const safeSslResult = toSafeSslResult(sslResult);
+
   const checkedAt = new Date().toISOString();
 
+  const overallStatus = calculateOverallStatus({
+    http_status: httpStatus,
+    ssl_status: sslResult.status,
+    deployment_status: health.deployment_status,
+    critical_errors_status: health.critical_errors_status,
+    integration_freshness_status: health.integration_freshness_status,
+  });
+
   // ============================================================
-  // Persist successful HTTP response
+  // Persist the complete Health v1 snapshot
   //
   // The service-role client performs only this controlled write.
   //
@@ -566,17 +621,14 @@ Deno.serve(async (request) => {
   } = await adminClient
     .from("project_health")
     .update({
-      /*
-       * HTTP is currently only one Health signal.
-       *
-       * Do not claim that the whole project is healthy until the
-       * remaining Health v1 signals have been implemented.
-       */
-      overall_status: "unknown",
+      overall_status: overallStatus,
 
       http_status: httpStatus,
       http_status_code: httpResult.statusCode,
       http_response_time_ms: httpResult.responseTimeMs,
+
+      ssl_status: safeSslResult.status,
+      ssl_expires_at: safeSslResult.expiresAt,
 
       last_checked_at: checkedAt,
     })
@@ -592,6 +644,8 @@ Deno.serve(async (request) => {
         http_status,
         http_status_code,
         http_response_time_ms,
+        ssl_status,
+        ssl_expires_at,
         last_checked_at
       `,
     )
@@ -622,6 +676,11 @@ Deno.serve(async (request) => {
   // Result
   // ============================================================
 
+  const publicSslFields = toPublicSslFields({
+    status: updatedHealth.ssl_status,
+    expiresAt: updatedHealth.ssl_expires_at,
+  });
+
   return new Response(
     JSON.stringify({
       projectId: project.id,
@@ -629,9 +688,11 @@ Deno.serve(async (request) => {
       productionUrl: project.production_url,
       finalUrl: httpResult.finalUrl,
 
+      overallStatus: updatedHealth.overall_status,
       httpStatus: updatedHealth.http_status,
       statusCode: updatedHealth.http_status_code,
       responseTimeMs: updatedHealth.http_response_time_ms,
+      ...publicSslFields,
 
       redirectCount: httpResult.redirectCount,
       checkedAt: updatedHealth.last_checked_at,

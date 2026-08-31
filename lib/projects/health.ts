@@ -122,3 +122,75 @@ export function formatHealthTimestamp(
     year: "numeric",
   }).format(date);
 }
+
+export function getHealthDaysRemaining(
+  value: string | null | undefined,
+  now: Date = new Date(),
+): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const expiresAt = new Date(value);
+
+  if (
+    Number.isNaN(expiresAt.getTime()) ||
+    Number.isNaN(now.getTime())
+  ) {
+    return null;
+  }
+
+  return Math.max(
+    0,
+    Math.ceil((expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)),
+  );
+}
+
+export type SslHealthDetails = {
+  expiresLabel: string | null;
+  daysRemaining: number | null;
+  message: string;
+};
+
+export function getSslHealthDetails(
+  status: HealthStatus,
+  expiresAt: string | null | undefined,
+  now: Date = new Date(),
+): SslHealthDetails {
+  const expiresLabel = formatHealthTimestamp(expiresAt);
+  const daysRemaining = getHealthDaysRemaining(expiresAt, now);
+
+  if (status === "not_configured") {
+    return {
+      expiresLabel: null,
+      daysRemaining: null,
+      message: "Not checked yet",
+    };
+  }
+
+  if (status === "unknown") {
+    return {
+      expiresLabel,
+      daysRemaining,
+      message: "Certificate expiry could not be determined",
+    };
+  }
+
+  if (expiresLabel && daysRemaining !== null) {
+    return {
+      expiresLabel,
+      daysRemaining,
+      message: daysRemaining === 0
+        ? "Certificate expired"
+        : `Expires in ${daysRemaining} days`,
+    };
+  }
+
+  return {
+    expiresLabel,
+    daysRemaining,
+    message: status === "critical"
+      ? "HTTPS is not configured"
+      : "Certificate expiry not available",
+  };
+}

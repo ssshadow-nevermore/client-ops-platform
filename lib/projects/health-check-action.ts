@@ -9,6 +9,13 @@ export function isPersistedHealthFailure(code: string): boolean {
   return persistedHealthFailureCodes.has(code);
 }
 
+export function shouldRefreshHealthSnapshot(result: {
+  ok: boolean;
+  snapshotUpdated: boolean;
+}): boolean {
+  return result.ok || result.snapshotUpdated;
+}
+
 export function getHealthCheckErrorMessage(
   code: string,
   status: number,

@@ -19,9 +19,12 @@ export type HealthCheckResult = {
   projectId: string;
   productionUrl: string;
   finalUrl: string;
+  overallStatus: HealthStatus;
   httpStatus: HealthStatus;
   statusCode: number | null;
   responseTimeMs: number | null;
+  sslStatus: HealthStatus;
+  sslExpiresAt: string | null;
   redirectCount: number;
   checkedAt: string | null;
 };
@@ -146,7 +149,7 @@ export async function runProjectHealthCheck(
       const details = await readEdgeFunctionError(error);
       const snapshotUpdated = isPersistedHealthFailure(details.code);
 
-      // Only HTTP check failures that the Edge Function persisted should
+      // Only health check failures that the Edge Function persisted should
       // refresh the canonical snapshot.
       if (snapshotUpdated) {
         revalidateHealthPaths(normalizedProjectId);

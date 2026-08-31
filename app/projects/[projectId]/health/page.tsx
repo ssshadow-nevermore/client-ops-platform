@@ -14,6 +14,7 @@ import {
   formatHealthTimestamp,
   getHealthStatusLabel,
   getProjectHealth,
+  getSslHealthDetails,
   type HealthStatus,
 } from "@/lib/projects/health";
 import { hasProjectPermission } from "@/lib/projects/get-project-context";
@@ -79,13 +80,16 @@ export default async function HealthPage({ params }: HealthPageProps) {
     ? "inactive"
     : undefined;
   const lastCheckedLabel = formatHealthTimestamp(health?.last_checked_at);
+  const sslDetails = health
+    ? getSslHealthDetails(health.ssl_status, health.ssl_expires_at)
+    : null;
 
   return (
     <div className="page-container">
       <PageHeader
         eyebrow={project.name}
         title="Project Health"
-        description="Канонический health snapshot проекта. Overall status читается из project_health и не выводится из одного HTTP-сигнала."
+        description="Канонический health snapshot проекта. Overall status читается из project_health и учитывает HTTP, SSL и будущие сигналы."
         actions={
           <HealthCheckAction
             canCheck={canCheck}
@@ -113,7 +117,7 @@ export default async function HealthPage({ params }: HealthPageProps) {
               {lastCheckedLabel
                 ? `Last checked ${lastCheckedLabel}. `
                 : "Health check ещё не выполнялся. "}
-              HTTP не меняет overall status самостоятельно.
+              Overall status учитывает все сохранённые Health signals.
             </p>
           </div>
           <div className="health-overall-meta">
@@ -160,15 +164,16 @@ export default async function HealthPage({ params }: HealthPageProps) {
             </HealthSignalCard>
 
             <HealthSignalCard
-              caption="SSL status will become available when the SSL signal is implemented."
+              caption="SSL certificate snapshot from the final URL after the controlled HTTP check."
               icon="shield"
               status={health.ssl_status}
               title="SSL"
             >
               <div className="health-detail-row">
-                {health.ssl_expires_at
-                  ? `Expires ${formatHealthTimestamp(health.ssl_expires_at) ?? "Not available"}`
-                  : "No expiry recorded"}
+                {sslDetails?.expiresLabel && (
+                  <span>Expires {sslDetails.expiresLabel}</span>
+                )}
+                <span>{sslDetails?.message}</span>
               </div>
             </HealthSignalCard>
 

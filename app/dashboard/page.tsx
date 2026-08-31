@@ -118,9 +118,9 @@ export default async function DashboardPage() {
                       <span className={health ? `status-badge-dot status-${health.overall_status}` : "status-badge-dot"} />
                       {health ? `Health: ${getHealthStatusLabel(health.overall_status)}` : "Health unavailable"}
                     </span>
-                    {health?.http_status_code !== null && health?.http_status_code !== undefined && (
+                    {health && (
                       <span className="project-card-http">
-                        HTTP: {getHealthStatusLabel(health.http_status)} · {health.http_status_code}
+                        HTTP: {getHealthStatusLabel(health.http_status)}{health.http_status_code !== null ? ` · ${health.http_status_code}` : ""} · SSL: {getHealthStatusLabel(health.ssl_status)}
                       </span>
                     )}
                     <Icon className="project-card-arrow" name="arrow-up-right" size={16} />
