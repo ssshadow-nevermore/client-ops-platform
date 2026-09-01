@@ -73,6 +73,10 @@ Health UI
 → RLS + health.read authorization
 → production_url
 → SSRF/DNS validation
+→ authorized provider link lookup
+→ server-side Vault credential resolution
+→ Vercel deployment request when a resolved credential is available
+→ normalized deployment signal
 → controlled HTTP request
 → service-role controlled project_health write
 → RLS read by UI
@@ -85,8 +89,11 @@ JavaScript. `service role` создаётся и используется тол
 используется для authorization и не попадает в browser.
 
 `project_health` остаётся единственным canonical source для текущего Health snapshot.
-Пока реализован только HTTP signal, `overall_status` после проверки остаётся
-`unknown`, даже если HTTP healthy. Redirect targets проходят повторную validation;
+HTTP, SSL и Deployment Health обновляются как независимые signals. Пока остальные
+сигналы не реализованы или Vercel connection не имеет resolved Vault credential,
+`overall_status` остаётся `unknown`; frontend не выводит `healthy` только из HTTP.
+Vercel provider failures сохраняют deployment как `unknown`, не раскрывают provider
+response и не перетирают HTTP/SSL fields. Redirect targets проходят повторную validation;
 localhost, private/reserved IP и internal hostnames отклоняются. Проверка снижает
 SSRF-риск, но не заявляет абсолютную DNS-rebinding immunity, поскольку стандартный
 `fetch` выполняет собственное DNS connection resolution. Browser direct writes в
@@ -517,6 +524,13 @@ repo:read
 не запрашиваем write/delete permissions.
 
 Для первой версии integrations предпочтительно делать read-only там, где это возможно.
+
+В текущем MVP добавлены `provider_connections`, `project_provider_links` и Vault-backed
+server-side resolver. `provider_connections.credential_ref` имеет тип UUID и указывает
+на Vault secret; plaintext Vercel token не хранится в базе, `project_health.details`,
+audit/logs или browser-readable columns. Resolver читает только `decrypted_secret` по
+одному UUID через `SUPABASE_DB_URL` внутри Edge Function. Browser roles не имеют доступа
+к Vault schema/view и не могут вызвать secret-returning RPC (такого RPC нет).
 
 ---
 

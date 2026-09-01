@@ -26,6 +26,8 @@ import {
 } from "@/lib/projects/health";
 import { createClient } from "@/lib/supabase/server";
 
+import { DashboardHealthRefresh } from "./dashboard-health-refresh";
+
 export default async function DashboardPage() {
   const supabase = await createClient();
   const user = await getAuthenticatedUser(supabase);
@@ -59,6 +61,11 @@ export default async function DashboardPage() {
   const activeProjectCount = projects.filter(
     (project) => project.status === "active",
   ).length;
+  const healthRefreshProjectIds = projects
+    .filter(
+      (project) => project.status === "active" && Boolean(project.production_url),
+    )
+    .map((project) => project.id);
   const healthByProjectId = await getProjectHealthByProjectIds(
     supabase,
     projects.map((project) => project.id),
@@ -120,6 +127,7 @@ export default async function DashboardPage() {
       projectRole={context.role}
       userEmail={user.email}
     >
+      <DashboardHealthRefresh projectIds={healthRefreshProjectIds} />
       <div className="page-container">
         <div className="dashboard-hero">
           <div className="dashboard-hero-copy">

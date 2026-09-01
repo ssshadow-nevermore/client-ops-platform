@@ -26,6 +26,13 @@ export type ProjectHealthSnapshot = {
   updated_at: string;
 };
 
+export type DeploymentHealthPresentation = {
+  providerLabel: string;
+  stateLabel: string;
+  createdAtLabel: string;
+  deploymentId: string;
+};
+
 export const HEALTH_STATUS_LABELS: Record<HealthStatus, string> = {
   not_configured: "Not configured",
   unknown: "Unknown",
@@ -120,6 +127,54 @@ export function getHealthStatusLabel(
   status: HealthStatus | null | undefined,
 ): string {
   return status ? HEALTH_STATUS_LABELS[status] ?? "Not available" : "Not available";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  return normalized.length > 0 ? normalized : null;
+}
+
+export function getDeploymentHealthPresentation(
+  status: HealthStatus | null | undefined,
+  details: unknown,
+): DeploymentHealthPresentation | null {
+  if (status === "not_configured" || !isRecord(details)) {
+    return null;
+  }
+
+  const deployment = details.deployment;
+
+  if (!isRecord(deployment)) {
+    return null;
+  }
+
+  const provider = getNonEmptyString(deployment.provider);
+  const state = getNonEmptyString(deployment.state);
+  const deploymentId = getNonEmptyString(deployment.deployment_id);
+  const createdAt = getNonEmptyString(deployment.created_at);
+  const createdAtLabel = formatHealthTimestamp(createdAt);
+
+  if (!provider || !state || !deploymentId || !createdAtLabel) {
+    return null;
+  }
+
+  return {
+    providerLabel: provider.toLowerCase() === "vercel"
+      ? "Vercel"
+      : provider,
+    stateLabel: state.toUpperCase(),
+    createdAtLabel,
+    deploymentId,
+  };
 }
 
 export function getOperationalHealthStatus(

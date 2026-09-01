@@ -798,9 +798,12 @@ Project Health и Integration Health разделены. Недоступнос�
 ### Current implemented MVP slice
 
 Сейчас canonical snapshot хранится в `project_health`. Строка `project_health` создаётся
-автоматически при создании проекта. В current implementation работает только HTTP
-signal; SSL, deployment, critical errors и integration freshness остаются
-`not_configured`, пока соответствующие providers/checks не реализованы.
+автоматически при создании проекта. В current implementation работают HTTP и SSL
+signals, а Deployment Health v1 добавляет generic provider foundation, Vercel adapter и
+независимое обновление `deployment_status`. Реальное получение Vercel deployment
+требует project link и Vault `credential_ref`; server-side resolver читает секрет только
+внутри Edge Function. Connection provisioning UI, OAuth и Vault management UI пока не
+реализованы.
 
 Проверка из Developer UI проходит следующим потоком:
 
@@ -812,14 +815,23 @@ Health UI
 → RLS + health.read authorization
 → production_url
 → SSRF/DNS validation
+→ authorized provider link lookup
+→ server-side Vault credential resolution
+→ Vercel production deployment lookup when a linked provider connection is configured
+→ normalized independent health signals
 → controlled HTTP request
 → service-role controlled project_health write
 → RLS read by UI
 ```
 
 `service role` никогда не попадает в browser и не используется для authorization.
-Пока работает только HTTP, `overall_status` остаётся `unknown` после check и не
-вычисляется frontend по HTTP status. Redirect targets проходят ту же validation;
+Vault decrypted view не exposed через Data API: anon/authenticated не имеют доступа к
+schema, таблицам или secret-returning RPC. `SUPABASE_DB_URL` используется только
+server-side resolver после auth/RLS gate.
+Vercel `ERROR`, `BLOCKED` и `CANCELED` являются `degraded`, а provider failure
+сохраняет deployment как `unknown` и не перетирает HTTP/SSL. `overall_status` не
+становится `healthy`, пока не healthy все пять сигналов, и не вычисляется frontend по
+одному HTTP status. Redirect targets проходят ту же validation;
 localhost, private/reserved IP и internal hostnames отклоняются. Это существенно
 снижает SSRF-риск, но не является абсолютной защитой от DNS rebinding: стандартный
 `fetch` выполняет собственное DNS connection resolution.

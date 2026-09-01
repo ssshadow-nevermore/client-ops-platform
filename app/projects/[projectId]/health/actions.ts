@@ -23,6 +23,7 @@ export type HealthCheckResult = {
   httpStatus: HealthStatus;
   statusCode: number | null;
   responseTimeMs: number | null;
+  deploymentStatus: HealthStatus;
   sslStatus: HealthStatus;
   sslExpiresAt: string | null;
   redirectCount: number;

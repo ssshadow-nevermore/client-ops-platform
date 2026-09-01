@@ -12,6 +12,7 @@ import {
 import { getProjectRequestContext } from "@/lib/projects/get-project-request-context";
 import {
   formatHealthTimestamp,
+  getDeploymentHealthPresentation,
   getHealthStatusLabel,
   getProjectHealth,
   getSslHealthDetails,
@@ -82,6 +83,9 @@ export default async function HealthPage({ params }: HealthPageProps) {
   const lastCheckedLabel = formatHealthTimestamp(health?.last_checked_at);
   const sslDetails = health
     ? getSslHealthDetails(health.ssl_status, health.ssl_expires_at)
+    : null;
+  const deploymentDetails = health
+    ? getDeploymentHealthPresentation(health.deployment_status, health.details)
     : null;
 
   return (
@@ -183,9 +187,24 @@ export default async function HealthPage({ params }: HealthPageProps) {
               status={health.deployment_status}
               title="Deployment"
             >
-              <div className="health-detail-row">
-                Provider status not recorded
-              </div>
+              {deploymentDetails ? (
+                <>
+                  <div className="health-detail-row">
+                    <strong>
+                      {deploymentDetails.providerLabel} · {deploymentDetails.stateLabel}
+                    </strong>
+                  </div>
+                  <div className="health-detail-muted">
+                    Deployed {deploymentDetails.createdAtLabel}
+                  </div>
+                </>
+              ) : (
+                <div className="health-detail-row">
+                  {health.deployment_status === "not_configured"
+                    ? "Not configured"
+                    : "Provider status not recorded"}
+                </div>
+              )}
             </HealthSignalCard>
 
             <HealthSignalCard

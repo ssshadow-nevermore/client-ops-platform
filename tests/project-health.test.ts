@@ -7,6 +7,7 @@ import {
 } from "../lib/projects/health-check-action";
 import {
   formatHealthTimestamp,
+  getDeploymentHealthPresentation,
   getHealthAttentionReason,
   getHealthDaysRemaining,
   getHealthStatusPriority,
@@ -19,6 +20,56 @@ import {
 } from "../lib/projects/health";
 
 describe("project health presentation", () => {
+  it("presents a valid deployment snapshot from canonical details", () => {
+    const presentation = getDeploymentHealthPresentation("healthy", {
+      deployment: {
+        provider: "vercel",
+        state: "ready",
+        deployment_id: "dpl_123",
+        created_at: "2026-09-01T16:22:00.000Z",
+      },
+    });
+
+    expect(presentation).toEqual(expect.objectContaining({
+      providerLabel: "Vercel",
+      stateLabel: "READY",
+      deploymentId: "dpl_123",
+    }));
+    expect(presentation?.createdAtLabel).toContain("2026");
+  });
+
+  it("falls back when the deployment snapshot is absent", () => {
+    expect(
+      getDeploymentHealthPresentation("healthy", {}),
+    ).toBeNull();
+  });
+
+  it("falls back when the deployment snapshot is malformed", () => {
+    expect(
+      getDeploymentHealthPresentation("healthy", {
+        deployment: {
+          provider: "vercel",
+          state: 206,
+          deployment_id: "dpl_123",
+          created_at: "not-a-date",
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("does not present deployment details for a not-configured signal", () => {
+    expect(
+      getDeploymentHealthPresentation("not_configured", {
+        deployment: {
+          provider: "vercel",
+          state: "ready",
+          deployment_id: "dpl_123",
+          created_at: "2026-09-01T16:22:00.000Z",
+        },
+      }),
+    ).toBeNull();
+  });
+
   it("maps every canonical status to a human-readable label", () => {
     expect(getHealthStatusLabel("not_configured")).toBe("Not configured");
     expect(getHealthStatusLabel("unknown")).toBe("Unknown");

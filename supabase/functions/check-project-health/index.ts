@@ -3,6 +3,10 @@
 import { createClient } from "@supabase/supabase-js";
 
 import { getHealthCheckCooldownRetryAfterSeconds } from "./cooldown.ts";
+import {
+  type DeploymentCheckResult,
+  mergeDeploymentDetails,
+} from "./deployment.ts";
 import { checkHttpTarget, HttpCheckError } from "./http.ts";
 import { calculateOverallStatus, type HealthStatus } from "./overall.ts";
 import {
@@ -13,6 +17,12 @@ import {
   toSafeSslResult,
 } from "./ssl.ts";
 import { checkSslTargetWithConfiguredTransport } from "./remote-ssl.ts";
+import {
+  checkVercelProductionDeployment,
+  type VercelProjectLink,
+  type VercelProviderConnection,
+} from "./vercel.ts";
+import { resolveProviderCredential } from "./vault.ts";
 
 import {
   type ResolvedProductionTarget,
@@ -220,7 +230,8 @@ Deno.serve(async (request) => {
         ssl_status,
         deployment_status,
         critical_errors_status,
-        integration_freshness_status
+        integration_freshness_status,
+        details
       `,
     )
     .eq("project_id", projectId)
@@ -455,10 +466,89 @@ Deno.serve(async (request) => {
   );
 
   // ============================================================
+  // Deployment Health Check
+  //
+  // The user-scoped link lookup is intentionally performed before the
+  // service-role connection lookup. A caller without integrations.read sees
+  // no link and therefore cannot use this path to discover configuration.
+  // ============================================================
+
+  let deploymentResult: DeploymentCheckResult = {
+    status: "not_configured",
+    snapshot: null,
+  };
+
+  const {
+    data: providerLink,
+    error: providerLinkError,
+  } = await userClient
+    .from("project_provider_links")
+    .select(
+      "provider, external_project_id, connection_id",
+    )
+    .eq("project_id", projectId)
+    .eq("provider", "vercel")
+    .maybeSingle();
+
+  if (providerLinkError) {
+    console.error("Unable to load deployment provider link", {
+      projectId,
+      userId: user.id,
+      error: providerLinkError.message,
+    });
+
+    deploymentResult = {
+      status: "unknown",
+      snapshot: null,
+      failureReason: "provider_unreachable",
+    };
+  } else if (providerLink) {
+    const {
+      data: providerConnection,
+      error: providerConnectionError,
+    } = await adminClient
+      .from("provider_connections")
+      .select(
+        "provider, external_account_id, credential_ref, status",
+      )
+      .eq("id", providerLink.connection_id)
+      .eq("organization_id", project.organization_id)
+      .maybeSingle();
+
+    if (providerConnectionError) {
+      console.error("Unable to load deployment provider connection", {
+        projectId,
+        userId: user.id,
+        error: providerConnectionError.message,
+      });
+
+      deploymentResult = {
+        status: "unknown",
+        snapshot: null,
+        failureReason: "provider_unreachable",
+      };
+    } else if (!providerConnection) {
+      deploymentResult = {
+        status: "not_configured",
+        snapshot: null,
+      };
+    } else {
+      deploymentResult = await checkVercelProductionDeployment(
+        providerLink as VercelProjectLink,
+        providerConnection as VercelProviderConnection,
+        {
+          resolveCredential: resolveProviderCredential,
+        },
+      );
+    }
+  }
+
+  // ============================================================
   // HTTP Health Check
   // ============================================================
 
-  let httpResult;
+  let httpResult: Awaited<ReturnType<typeof checkHttpTarget>> | null = null;
+  let httpFailure: HttpCheckError | null = null;
 
   try {
     httpResult = await checkHttpTarget(
@@ -466,105 +556,36 @@ Deno.serve(async (request) => {
     );
   } catch (error) {
     if (error instanceof HttpCheckError) {
-      const checkedAt = new Date().toISOString();
-
-      /*
-       * A failed outbound check is a real HTTP health result.
-       */
-      const overallStatus = calculateOverallStatus({
-        http_status: "critical",
-        ssl_status: health.ssl_status,
-        deployment_status: health.deployment_status,
-        critical_errors_status: health.critical_errors_status,
-        integration_freshness_status: health.integration_freshness_status,
-      });
-
-      const {
-        data: updatedHealth,
-        error: updateError,
-      } = await adminClient
-        .from("project_health")
-        .update({
-          overall_status: overallStatus,
-          http_status: "critical",
-          http_status_code: null,
-          http_response_time_ms: null,
-          last_checked_at: checkedAt,
-        })
-        .eq("project_id", projectId)
-        .eq(
-          "organization_id",
-          project.organization_id,
-        )
-        .select("project_id")
-        .maybeSingle();
-
-      if (updateError || !updatedHealth) {
-        console.error(
-          "Unable to persist failed HTTP health check",
-          {
-            projectId,
-            userId: user.id,
-            error: updateError?.message,
-          },
-        );
-
-        return new Response(
-          JSON.stringify({
-            error: "Unable to persist health result",
-          }),
-          {
-            status: 500,
-            headers: jsonHeaders,
-          },
-        );
-      }
-
-      const responseStatus = error.code === "timeout"
-        ? 504
-        : error.code === "network_error"
-        ? 502
-        : 400;
+      httpFailure = error;
+    } else {
+      console.error(
+        "Unexpected HTTP health check failure",
+        {
+          projectId,
+          userId: user.id,
+          error,
+        },
+      );
 
       return new Response(
         JSON.stringify({
-          error: error.message,
-          code: error.code,
+          error: "HTTP health check failed",
         }),
         {
-          status: responseStatus,
+          status: 500,
           headers: jsonHeaders,
         },
       );
     }
-
-    console.error(
-      "Unexpected HTTP health check failure",
-      {
-        projectId,
-        userId: user.id,
-        error,
-      },
-    );
-
-    return new Response(
-      JSON.stringify({
-        error: "HTTP health check failed",
-      }),
-      {
-        status: 500,
-        headers: jsonHeaders,
-      },
-    );
   }
 
   // ============================================================
   // Classify HTTP response
   // ============================================================
 
-  const httpStatus = classifyHttpStatus(
-    httpResult.statusCode,
-  );
+  const httpStatus = httpResult
+    ? classifyHttpStatus(httpResult.statusCode)
+    : "critical";
 
   // ============================================================
   // SSL Health Check
@@ -581,10 +602,12 @@ Deno.serve(async (request) => {
     : null;
 
   try {
-    const finalSslTarget = await resolveFinalSslTarget(
-      productionTarget,
-      httpResult.finalUrl,
-    );
+    const finalSslTarget = httpResult
+      ? await resolveFinalSslTarget(
+        productionTarget,
+        httpResult.finalUrl,
+      )
+      : productionTarget;
 
     sslResult = await checkSslTargetWithConfiguredTransport(
       finalSslTarget,
@@ -612,10 +635,15 @@ Deno.serve(async (request) => {
   const overallStatus = calculateOverallStatus({
     http_status: httpStatus,
     ssl_status: sslResult.status,
-    deployment_status: health.deployment_status,
+    deployment_status: deploymentResult.status,
     critical_errors_status: health.critical_errors_status,
     integration_freshness_status: health.integration_freshness_status,
   });
+
+  const details = mergeDeploymentDetails(
+    health.details as Record<string, unknown>,
+    deploymentResult.snapshot,
+  );
 
   // ============================================================
   // Persist the complete Health v1 snapshot
@@ -635,11 +663,14 @@ Deno.serve(async (request) => {
       overall_status: overallStatus,
 
       http_status: httpStatus,
-      http_status_code: httpResult.statusCode,
-      http_response_time_ms: httpResult.responseTimeMs,
+      http_status_code: httpResult?.statusCode ?? null,
+      http_response_time_ms: httpResult?.responseTimeMs ?? null,
 
       ssl_status: safeSslResult.status,
       ssl_expires_at: safeSslResult.expiresAt,
+
+      deployment_status: deploymentResult.status,
+      details,
 
       last_checked_at: checkedAt,
     })
@@ -657,6 +688,8 @@ Deno.serve(async (request) => {
         http_response_time_ms,
         ssl_status,
         ssl_expires_at,
+        deployment_status,
+        details,
         last_checked_at
       `,
     )
@@ -675,6 +708,42 @@ Deno.serve(async (request) => {
     return new Response(
       JSON.stringify({
         error: "Unable to persist health result",
+      }),
+      {
+        status: 500,
+        headers: jsonHeaders,
+      },
+    );
+  }
+
+  if (httpFailure) {
+    const responseStatus = httpFailure.code === "timeout"
+      ? 504
+      : httpFailure.code === "network_error"
+      ? 502
+      : 400;
+
+    return new Response(
+      JSON.stringify({
+        error: httpFailure.message,
+        code: httpFailure.code,
+      }),
+      {
+        status: responseStatus,
+        headers: jsonHeaders,
+      },
+    );
+  }
+
+  if (!httpResult) {
+    console.error("HTTP health check produced no result", {
+      projectId,
+      userId: user.id,
+    });
+
+    return new Response(
+      JSON.stringify({
+        error: "HTTP health check failed",
       }),
       {
         status: 500,
@@ -703,6 +772,7 @@ Deno.serve(async (request) => {
       httpStatus: updatedHealth.http_status,
       statusCode: updatedHealth.http_status_code,
       responseTimeMs: updatedHealth.http_response_time_ms,
+      deploymentStatus: updatedHealth.deployment_status,
       ...publicSslFields,
 
       redirectCount: httpResult.redirectCount,

@@ -291,6 +291,21 @@ Latest deploy failed
 
 Failed production deployment должен быть одним из health signals.
 
+### Current implementation
+
+Deployment Health v1 получает только последнюю deployment с
+`target=production` через server-side Vercel adapter. Ответ нормализуется в
+`project_health.deployment_status`; provider failure становится `unknown` и не
+перезаписывает независимые HTTP/SSL signals. Ошибка deployment не означает, что
+текущий production недоступен — availability отдельно проверяется HTTP Health.
+
+В текущем MVP connection/link schema и provider adapter подключены к Supabase Vault:
+`credential_ref` хранит UUID Vault secret, а server-side resolver читает ровно одну
+строку `vault.decrypted_secrets` внутри Edge Function. Без link статус
+`not_configured`; при наличии link, но без resolved credential, check завершается
+безопасным `unknown`. Connection provisioning UI, OAuth и Vault management UI ещё не
+реализованы.
+
 ---
 
 ## 9. Supabase Integration

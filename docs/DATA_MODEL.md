@@ -47,8 +47,9 @@ projects
     │      └── content_entries
     │
     ├── media_assets
-    ├── integrations
-    │      └── integration_snapshots
+    ├── provider_connections
+    ├── project_provider_links
+    └── integration_snapshots
     │
     ├── project_health
     ├── health_checks
@@ -754,50 +755,59 @@ Platform API уже резолвит корректный URL.
 
 ---
 
-# 21. integrations
+# 21. integrations foundation
 
-Одна запись = одна подключённая integration.
+`provider_connections` хранит organization-level connection metadata. Одна
+connection может обслуживать несколько проектов через
+`project_provider_links`.
+
+## 21.1 provider_connections
 
 Поля:
 
 ```text
-id
-
+id PRIMARY KEY
 organization_id
-project_id
-
-provider_category
-provider_name
-
+provider
 external_account_id
-external_project_id
-
+credential_ref UUID
 status
-
-credential_ref
-
-created_by
-
 created_at
 updated_at
-
-last_synced_at
-last_error_at
-last_error_code
 ```
 
-Пример:
+`provider` хранится в нормализованном lowercase-виде. Для одной организации
+внешний provider account не дублируется.
+
+---
+
+## 21.2 project_provider_links
+
+Связывает project с organization-level provider connection и external project.
+Один проект имеет не более одной связи одного provider, а один external project
+нельзя дважды связать с одной connection.
+
+Поля:
 
 ```text
-provider_category = "deployment"
-provider_name = "vercel"
+project_id
+organization_id
+connection_id
+provider
+external_project_id
+external_project_name
+created_at
+updated_at
 ```
+
+Tenant consistency обеспечивается composite foreign keys для project и connection.
 
 ---
 
 # 22. credential_ref
 
-Нельзя хранить plaintext token внутри `integrations`.
+Нельзя хранить plaintext token внутри `provider_connections` или любой другой
+browser-readable сущности.
 
 Вместо:
 
@@ -805,7 +815,7 @@ provider_name = "vercel"
 access_token = "..."
 ```
 
-храним:
+храним UUID Vault secret:
 
 ```text
 credential_ref
@@ -813,7 +823,11 @@ credential_ref
 
 который указывает на защищённое secret storage.
 
-Конкретная реализация выбирается позже.
+В текущем репозитории `credential_ref` ссылается на UUID Supabase Vault secret.
+Server-side resolver внутри Edge Function валидирует UUID и параметризованно читает
+только `decrypted_secret` из `vault.decrypted_secrets`. При invalid/missing ref или
+недоступном Vault provider adapter fail-closed возвращает безопасную ошибку; plaintext
+token не попадает в обычные public tables или browser-readable data.
 
 ---
 
@@ -1197,7 +1211,8 @@ content_entries
 
 media_assets
 
-integrations
+provider_connections
+project_provider_links
 integration_snapshots
 
 project_health
@@ -1249,11 +1264,17 @@ ContentModule
 Project
 1 ─── N MediaAssets
 
-Project
-1 ─── N Integrations
+Organization
+1 ─── N ProviderConnections
 
-Integration
-1 ─── N IntegrationSnapshots
+ProviderConnection
+1 ─── N ProjectProviderLinks
+
+Project
+1 ─── N ProjectProviderLinks
+
+IntegrationSnapshot
+belongs to a future normalized integration history model
 
 Project
 1 ─── 1 ProjectHealth
@@ -1630,7 +1651,8 @@ CMS
 └── media_assets
 
 INTEGRATIONS
-├── integrations
+├── provider_connections
+├── project_provider_links
 └── integration_snapshots
 
 HEALTH

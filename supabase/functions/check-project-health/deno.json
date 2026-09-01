@@ -1,5 +1,6 @@
 {
   "imports": {
+    "@db/postgres": "jsr:@db/postgres@^0",
     "@supabase/supabase-js": "npm:@supabase/supabase-js@^2.112.4",
     "ipaddr.js": "npm:ipaddr.js@^2.5.0"
   }
