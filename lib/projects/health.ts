@@ -34,6 +34,27 @@ export const HEALTH_STATUS_LABELS: Record<HealthStatus, string> = {
   critical: "Critical",
 };
 
+export type PortfolioStatus =
+  | "healthy"
+  | "needs_attention"
+  | "unknown"
+  | "not_configured";
+
+export const PORTFOLIO_STATUS_LABELS: Record<PortfolioStatus, string> = {
+  healthy: "Healthy",
+  needs_attention: "Needs attention",
+  not_configured: "Not configured",
+  unknown: "Unknown",
+};
+
+const HEALTH_STATUS_PRIORITY: Record<HealthStatus, number> = {
+  critical: 0,
+  degraded: 1,
+  unknown: 2,
+  not_configured: 3,
+  healthy: 4,
+};
+
 const projectHealthSelect = `
   project_id,
   organization_id,
@@ -99,6 +120,74 @@ export function getHealthStatusLabel(
   status: HealthStatus | null | undefined,
 ): string {
   return status ? HEALTH_STATUS_LABELS[status] ?? "Not available" : "Not available";
+}
+
+export function getOperationalHealthStatus(
+  health: ProjectHealthSnapshot | null | undefined,
+): HealthStatus {
+  return health?.overall_status ?? "unknown";
+}
+
+export function getPortfolioStatus(
+  status: HealthStatus | null | undefined,
+): PortfolioStatus {
+  switch (status) {
+    case "healthy":
+      return "healthy";
+    case "critical":
+    case "degraded":
+      return "needs_attention";
+    case "not_configured":
+      return "not_configured";
+    case "unknown":
+    default:
+      return "unknown";
+  }
+}
+
+export function getPortfolioStatusLabel(status: PortfolioStatus): string {
+  return PORTFOLIO_STATUS_LABELS[status];
+}
+
+export function getPortfolioBadgeStatus(
+  portfolioStatus: PortfolioStatus,
+  overallStatus: HealthStatus,
+): string {
+  if (portfolioStatus === "needs_attention") {
+    return overallStatus === "critical" ? "critical" : "warning";
+  }
+
+  return portfolioStatus;
+}
+
+export function getHealthStatusPriority(status: HealthStatus): number {
+  return HEALTH_STATUS_PRIORITY[status];
+}
+
+export function getHealthAttentionReason(
+  health: ProjectHealthSnapshot | null | undefined,
+): string | null {
+  if (!health) {
+    return null;
+  }
+
+  if (health.ssl_status === "critical" || health.ssl_status === "degraded") {
+    return `SSL: ${getHealthStatusLabel(health.ssl_status)}`;
+  }
+
+  if (health.http_status === "critical" || health.http_status === "degraded") {
+    const statusCode = health.http_status_code === null
+      ? ""
+      : ` · ${health.http_status_code}`;
+
+    return `HTTP: ${getHealthStatusLabel(health.http_status)}${statusCode}`;
+  }
+
+  if (health.overall_status === "critical" || health.overall_status === "degraded") {
+    return `Overall: ${getHealthStatusLabel(health.overall_status)}`;
+  }
+
+  return null;
 }
 
 export function formatHealthTimestamp(

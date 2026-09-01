@@ -7,10 +7,15 @@ import {
 } from "../lib/projects/health-check-action";
 import {
   formatHealthTimestamp,
+  getHealthAttentionReason,
   getHealthDaysRemaining,
+  getHealthStatusPriority,
   getHealthStatusLabel,
+  getOperationalHealthStatus,
+  getPortfolioStatus,
   getProjectHealth,
   getSslHealthDetails,
+  type ProjectHealthSnapshot,
 } from "../lib/projects/health";
 
 describe("project health presentation", () => {
@@ -110,6 +115,70 @@ describe("project health presentation", () => {
         new Date("2026-08-30T00:00:00.000Z"),
       ),
     ).toBe(19);
+  });
+
+  it("maps missing and canonical overall statuses for the portfolio", () => {
+    expect(getOperationalHealthStatus(null)).toBe("unknown");
+    expect(getPortfolioStatus(null)).toBe("unknown");
+    expect(getPortfolioStatus("not_configured")).toBe("not_configured");
+    expect(getPortfolioStatus("unknown")).toBe("unknown");
+    expect(getPortfolioStatus("healthy")).toBe("healthy");
+    expect(getPortfolioStatus("degraded")).toBe("needs_attention");
+    expect(getPortfolioStatus("critical")).toBe("needs_attention");
+  });
+
+  it("keeps operational health priority ordered from critical to healthy", () => {
+    expect(getHealthStatusPriority("critical")).toBeLessThan(
+      getHealthStatusPriority("degraded"),
+    );
+    expect(getHealthStatusPriority("degraded")).toBeLessThan(
+      getHealthStatusPriority("unknown"),
+    );
+    expect(getHealthStatusPriority("unknown")).toBeLessThan(
+      getHealthStatusPriority("not_configured"),
+    );
+    expect(getHealthStatusPriority("not_configured")).toBeLessThan(
+      getHealthStatusPriority("healthy"),
+    );
+  });
+
+  it("uses only recorded SSL, HTTP, then overall data for attention reasons", () => {
+    const baseHealth: ProjectHealthSnapshot = {
+      project_id: "project-1",
+      organization_id: "organization-1",
+      overall_status: "critical",
+      http_status: "critical",
+      ssl_status: "critical",
+      deployment_status: "not_configured",
+      critical_errors_status: "not_configured",
+      integration_freshness_status: "not_configured",
+      http_status_code: 503,
+      http_response_time_ms: null,
+      ssl_expires_at: null,
+      critical_error_count: null,
+      last_checked_at: null,
+      details: {},
+      created_at: "2026-08-30T00:00:00.000Z",
+      updated_at: "2026-08-30T00:00:00.000Z",
+    };
+
+    expect(getHealthAttentionReason(baseHealth)).toBe("SSL: Critical");
+    expect(
+      getHealthAttentionReason({
+        ...baseHealth,
+        overall_status: "degraded",
+        ssl_status: "not_configured",
+        http_status: "degraded",
+      }),
+    ).toBe("HTTP: Degraded · 503");
+    expect(
+      getHealthAttentionReason({
+        ...baseHealth,
+        http_status: "healthy",
+        ssl_status: "not_configured",
+      }),
+    ).toBe("Overall: Critical");
+    expect(getHealthAttentionReason(null)).toBeNull();
   });
 });
 
