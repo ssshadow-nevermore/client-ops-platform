@@ -63,6 +63,13 @@ Deno.test("degraded deployment produces degraded overall", () => {
   );
 });
 
+Deno.test("degraded critical errors produce degraded overall", () => {
+  assertEquals(
+    calculateOverallStatus(signals({ critical_errors_status: "degraded" })),
+    "degraded",
+  );
+});
+
 Deno.test("critical SSL produces critical overall", () => {
   assertEquals(
     calculateOverallStatus(signals({ ssl_status: "critical" })),
@@ -77,6 +84,15 @@ Deno.test("critical HTTP produces critical overall even with healthy SSL", () =>
         http_status: "critical",
         ssl_status: "healthy",
       }),
+    ),
+    "critical",
+  );
+});
+
+Deno.test("critical errors produce critical overall", () => {
+  assertEquals(
+    calculateOverallStatus(
+      signals({ critical_errors_status: "critical" }),
     ),
     "critical",
   );

@@ -7,6 +7,7 @@ import {
 } from "../lib/projects/health-check-action";
 import {
   formatHealthTimestamp,
+  getCriticalErrorsHealthPresentation,
   getDeploymentHealthPresentation,
   getHealthAttentionReason,
   getHealthDaysRemaining,
@@ -65,6 +66,85 @@ describe("project health presentation", () => {
           state: "ready",
           deployment_id: "dpl_123",
           created_at: "2026-09-01T16:22:00.000Z",
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("presents a valid Sentry critical errors snapshot from canonical details", () => {
+    const presentation = getCriticalErrorsHealthPresentation(
+      "degraded",
+      2,
+      {
+        critical_errors: {
+          provider: "sentry",
+          window: "24h",
+          issue_count: 2,
+          error_count: 2,
+          fatal_count: 0,
+          truncated: false,
+          latest_seen_at: "2026-09-01T16:22:00.000Z",
+        },
+      },
+    );
+
+    expect(presentation).toEqual({
+      summary: "Sentry · 2 active issues",
+      detail: expect.stringContaining("2 error · 0 fatal · last 24h"),
+    });
+  });
+
+  it("presents a healthy zero-issue Sentry snapshot without inventing a positive signal", () => {
+    const presentation = getCriticalErrorsHealthPresentation(
+      "healthy",
+      0,
+      {
+        critical_errors: {
+          provider: "sentry",
+          window: "24h",
+          issue_count: 0,
+          error_count: 0,
+          fatal_count: 0,
+          truncated: false,
+          latest_seen_at: null,
+        },
+      },
+    );
+
+    expect(presentation?.summary).toBe("Sentry · 0 active issues");
+    expect(presentation?.detail).toContain("No unresolved error/fatal issues");
+  });
+
+  it.each([
+    {},
+    {
+      critical_errors: {
+        provider: "sentry",
+        window: "24h",
+        issue_count: 2,
+        error_count: 1,
+        fatal_count: 0,
+        truncated: false,
+        latest_seen_at: "not-a-date",
+      },
+    },
+  ])("falls back when the Sentry critical errors snapshot is malformed", (details) => {
+    expect(
+      getCriticalErrorsHealthPresentation("degraded", 2, details),
+    ).toBeNull();
+  });
+
+  it("does not present a fabricated Sentry snapshot for a not-configured signal", () => {
+    expect(
+      getCriticalErrorsHealthPresentation("not_configured", null, {
+        critical_errors: {
+          provider: "sentry",
+          window: "24h",
+          issue_count: 0,
+          error_count: 0,
+          fatal_count: 0,
+          truncated: false,
+          latest_seen_at: null,
         },
       }),
     ).toBeNull();

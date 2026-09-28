@@ -374,36 +374,31 @@ storage_usage
 ### MVP Data
 
 ```text
-unresolved_issue_count
-critical_issue_count
-
-last_issue_at
-last_critical_issue_at
+critical_errors_status
+critical_error_count
+details.critical_errors = {
+  provider: "sentry",
+  window: "24h",
+  issue_count,
+  error_count,
+  fatal_count,
+  truncated,
+  latest_seen_at
+}
 ```
 
-Для нескольких наиболее важных issues:
-
-```text
-issue_id
-title
-level
-first_seen
-last_seen
-count
-sentry_url
-```
+Текущая реализация запрашивает Sentry Organization Issues API (минимальный read-only
+scope `event:read`) за последние 24 часа
+с фильтром unresolved `error`/`fatal`, без фильтра environment. Лимит ответа — 100;
+при наличии следующей страницы snapshot помечается как `truncated`. Empty result
+становится `healthy`, error-only — `degraded`, fatal — `critical`, provider или Vault
+failure — `unknown`. Сырой ответ issues не сохраняется.
 
 ### UI
 
 ```text
-Errors
-
-2 critical
-8 unresolved
-
-Latest:
-TypeError in checkout
-5 min ago
+Sentry · 2 active issues
+2 error · 0 fatal · last 24h
 ```
 
 Для глубокого анализа developer переходит в Sentry.

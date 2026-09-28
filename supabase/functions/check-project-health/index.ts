@@ -4,11 +4,20 @@ import { createClient } from "@supabase/supabase-js";
 
 import { getHealthCheckCooldownRetryAfterSeconds } from "./cooldown.ts";
 import {
+  type CriticalErrorsCheckResult,
+  mergeCriticalErrorsDetails,
+} from "./critical-errors.ts";
+import {
   type DeploymentCheckResult,
   mergeDeploymentDetails,
 } from "./deployment.ts";
 import { checkHttpTarget, HttpCheckError } from "./http.ts";
 import { calculateOverallStatus, type HealthStatus } from "./overall.ts";
+import {
+  checkSentryCriticalErrors,
+  type SentryProjectLink,
+  type SentryProviderConnection,
+} from "./sentry.ts";
 import {
   createUnknownSslResult,
   resolveFinalSslTarget,
@@ -466,11 +475,11 @@ Deno.serve(async (request) => {
   );
 
   // ============================================================
-  // Deployment Health Check
+  // Provider-backed Health signals
   //
   // The user-scoped link lookup is intentionally performed before the
   // service-role connection lookup. A caller without integrations.read sees
-  // no link and therefore cannot use this path to discover configuration.
+  // no link and therefore cannot use these paths to discover configuration.
   // ============================================================
 
   let deploymentResult: DeploymentCheckResult = {
@@ -478,8 +487,13 @@ Deno.serve(async (request) => {
     snapshot: null,
   };
 
+  let criticalErrorsResult: CriticalErrorsCheckResult = {
+    status: "not_configured",
+    snapshot: null,
+  };
+
   const {
-    data: providerLink,
+    data: providerLinks,
     error: providerLinkError,
   } = await userClient
     .from("project_provider_links")
@@ -487,11 +501,10 @@ Deno.serve(async (request) => {
       "provider, external_project_id, connection_id",
     )
     .eq("project_id", projectId)
-    .eq("provider", "vercel")
-    .maybeSingle();
+    .in("provider", ["vercel", "sentry"]);
 
   if (providerLinkError) {
-    console.error("Unable to load deployment provider link", {
+    console.error("Unable to load provider links", {
       projectId,
       userId: user.id,
       error: providerLinkError.message,
@@ -502,44 +515,106 @@ Deno.serve(async (request) => {
       snapshot: null,
       failureReason: "provider_unreachable",
     };
-  } else if (providerLink) {
-    const {
-      data: providerConnection,
-      error: providerConnectionError,
-    } = await adminClient
-      .from("provider_connections")
-      .select(
-        "provider, external_account_id, credential_ref, status",
-      )
-      .eq("id", providerLink.connection_id)
-      .eq("organization_id", project.organization_id)
-      .maybeSingle();
+    criticalErrorsResult = {
+      status: "unknown",
+      snapshot: null,
+      failureReason: "provider_unreachable",
+    };
+  } else {
+    const providerLink = providerLinks?.find((link) =>
+      link.provider === "vercel"
+    );
+    const sentryLink = providerLinks?.find((link) =>
+      link.provider === "sentry"
+    );
 
-    if (providerConnectionError) {
-      console.error("Unable to load deployment provider connection", {
-        projectId,
-        userId: user.id,
-        error: providerConnectionError.message,
-      });
+    if (providerLink) {
+      const {
+        data: providerConnection,
+        error: providerConnectionError,
+      } = await adminClient
+        .from("provider_connections")
+        .select(
+          "provider, external_account_id, credential_ref, status",
+        )
+        .eq("id", providerLink.connection_id)
+        .eq("organization_id", project.organization_id)
+        .maybeSingle();
 
-      deploymentResult = {
-        status: "unknown",
-        snapshot: null,
-        failureReason: "provider_unreachable",
-      };
-    } else if (!providerConnection) {
-      deploymentResult = {
-        status: "not_configured",
-        snapshot: null,
-      };
-    } else {
-      deploymentResult = await checkVercelProductionDeployment(
-        providerLink as VercelProjectLink,
-        providerConnection as VercelProviderConnection,
-        {
-          resolveCredential: resolveProviderCredential,
-        },
-      );
+      if (providerConnectionError) {
+        console.error("Unable to load deployment provider connection", {
+          projectId,
+          userId: user.id,
+          error: providerConnectionError.message,
+        });
+
+        deploymentResult = {
+          status: "unknown",
+          snapshot: null,
+          failureReason: "provider_unreachable",
+        };
+      } else if (!providerConnection) {
+        deploymentResult = {
+          status: "not_configured",
+          snapshot: null,
+        };
+      } else {
+        deploymentResult = await checkVercelProductionDeployment(
+          providerLink as VercelProjectLink,
+          providerConnection as VercelProviderConnection,
+          {
+            resolveCredential: resolveProviderCredential,
+          },
+        );
+      }
+    }
+
+    if (sentryLink) {
+      const {
+        data: providerConnection,
+        error: providerConnectionError,
+      } = await adminClient
+        .from("provider_connections")
+        .select(
+          "provider, external_account_id, credential_ref, status",
+        )
+        .eq("id", sentryLink.connection_id)
+        .eq("organization_id", project.organization_id)
+        .maybeSingle();
+
+      if (providerConnectionError) {
+        console.error("Unable to load critical errors provider connection", {
+          projectId,
+          userId: user.id,
+          error: providerConnectionError.message,
+        });
+
+        criticalErrorsResult = {
+          status: "unknown",
+          snapshot: null,
+          failureReason: "provider_unreachable",
+        };
+      } else if (providerConnection) {
+        try {
+          criticalErrorsResult = await checkSentryCriticalErrors(
+            sentryLink as SentryProjectLink,
+            providerConnection as SentryProviderConnection,
+            {
+              resolveCredential: resolveProviderCredential,
+            },
+          );
+        } catch {
+          /*
+           * Provider failures must not prevent independent HTTP, SSL, or
+           * deployment signals from producing a new canonical snapshot.
+           */
+          criticalErrorsResult = {
+            status: "unknown",
+            snapshot: null,
+            failureReason: "provider_unreachable",
+          };
+        }
+      }
     }
   }
 
@@ -636,13 +711,17 @@ Deno.serve(async (request) => {
     http_status: httpStatus,
     ssl_status: sslResult.status,
     deployment_status: deploymentResult.status,
-    critical_errors_status: health.critical_errors_status,
+    critical_errors_status: criticalErrorsResult.status,
     integration_freshness_status: health.integration_freshness_status,
   });
 
-  const details = mergeDeploymentDetails(
+  const deploymentDetails = mergeDeploymentDetails(
     health.details as Record<string, unknown>,
     deploymentResult.snapshot,
+  );
+  const details = mergeCriticalErrorsDetails(
+    deploymentDetails,
+    criticalErrorsResult.snapshot,
   );
 
   // ============================================================
@@ -670,6 +749,8 @@ Deno.serve(async (request) => {
       ssl_expires_at: safeSslResult.expiresAt,
 
       deployment_status: deploymentResult.status,
+      critical_errors_status: criticalErrorsResult.status,
+      critical_error_count: criticalErrorsResult.snapshot?.issue_count ?? null,
       details,
 
       last_checked_at: checkedAt,
@@ -689,6 +770,8 @@ Deno.serve(async (request) => {
         ssl_status,
         ssl_expires_at,
         deployment_status,
+        critical_errors_status,
+        critical_error_count,
         details,
         last_checked_at
       `,
@@ -773,6 +856,8 @@ Deno.serve(async (request) => {
       statusCode: updatedHealth.http_status_code,
       responseTimeMs: updatedHealth.http_response_time_ms,
       deploymentStatus: updatedHealth.deployment_status,
+      criticalErrorsStatus: updatedHealth.critical_errors_status,
+      criticalErrorCount: updatedHealth.critical_error_count,
       ...publicSslFields,
 
       redirectCount: httpResult.redirectCount,

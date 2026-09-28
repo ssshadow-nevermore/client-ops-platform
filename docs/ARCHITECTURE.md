@@ -492,12 +492,18 @@ unknown
 
 ## 11. Sentry Integration
 
-Первая версия:
+Current implemented MVP slice:
 
-* unresolved issues count;
-* critical issues;
-* last error timestamp;
-* project health signal.
+* unresolved `error` / `fatal` issues for the last 24 hours;
+* `healthy` when the result is empty;
+* `degraded` when unresolved errors exist;
+* `critical` when unresolved fatal issues exist;
+* `unknown` when the provider request or credential resolution fails.
+
+The Edge Function reads the organization Issues endpoint through the server-side
+Sentry adapter using a Vault-resolved credential. It stores only the normalized
+`critical_errors_status`, `critical_error_count` and safe aggregate snapshot in
+`project_health.details.critical_errors`; raw issue contents are not persisted.
 
 Developer Control Panel показывает краткую сводку.
 
@@ -798,9 +804,10 @@ Project Health и Integration Health разделены. Недоступнос�
 ### Current implemented MVP slice
 
 Сейчас canonical snapshot хранится в `project_health`. Строка `project_health` создаётся
-автоматически при создании проекта. В current implementation работают HTTP и SSL
-signals, а Deployment Health v1 добавляет generic provider foundation, Vercel adapter и
-независимое обновление `deployment_status`. Реальное получение Vercel deployment
+автоматически при создании проекта. В current implemented MVP slice работают HTTP, SSL,
+Deployment и Critical Errors signals; Deployment Health v1 добавляет generic provider
+foundation, Vercel adapter, а Critical Errors v1 — Sentry adapter и независимое обновление
+`critical_errors_status`. Реальное получение Vercel deployment
 требует project link и Vault `credential_ref`; server-side resolver читает секрет только
 внутри Edge Function. Connection provisioning UI, OAuth и Vault management UI пока не
 реализованы.
@@ -818,6 +825,7 @@ Health UI
 → authorized provider link lookup
 → server-side Vault credential resolution
 → Vercel production deployment lookup when a linked provider connection is configured
+→ Sentry unresolved error/fatal lookup when a linked provider connection is configured
 → normalized independent health signals
 → controlled HTTP request
 → service-role controlled project_health write
@@ -828,8 +836,10 @@ Health UI
 Vault decrypted view не exposed через Data API: anon/authenticated не имеют доступа к
 schema, таблицам или secret-returning RPC. `SUPABASE_DB_URL` используется только
 server-side resolver после auth/RLS gate.
-Vercel `ERROR`, `BLOCKED` и `CANCELED` являются `degraded`, а provider failure
-сохраняет deployment как `unknown` и не перетирает HTTP/SSL. `overall_status` не
+Vercel `ERROR`, `BLOCKED` и `CANCELED` являются `degraded`, а Sentry error/fatal
+результат нормализуется в `degraded`/`critical`. Provider failure сохраняет соответствующий
+signal как `unknown`, очищает устаревший provider detail и не перетирает HTTP/SSL.
+`overall_status` не
 становится `healthy`, пока не healthy все пять сигналов, и не вычисляется frontend по
 одному HTTP status. Redirect targets проходят ту же validation;
 localhost, private/reserved IP и internal hostnames отклоняются. Это существенно

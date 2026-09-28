@@ -33,6 +33,11 @@ export type DeploymentHealthPresentation = {
   deploymentId: string;
 };
 
+export type CriticalErrorsHealthPresentation = {
+  summary: string;
+  detail: string;
+};
+
 export const HEALTH_STATUS_LABELS: Record<HealthStatus, string> = {
   not_configured: "Not configured",
   unknown: "Unknown",
@@ -174,6 +179,93 @@ export function getDeploymentHealthPresentation(
     stateLabel: state.toUpperCase(),
     createdAtLabel,
     deploymentId,
+  };
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isValidCriticalErrorsSnapshot(
+  value: unknown,
+): value is {
+  provider: "sentry";
+  window: "24h";
+  issue_count: number;
+  error_count: number;
+  fatal_count: number;
+  truncated: boolean;
+  latest_seen_at: string | null;
+} {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (
+    value.provider !== "sentry" ||
+    value.window !== "24h" ||
+    !isNonNegativeInteger(value.issue_count) ||
+    !isNonNegativeInteger(value.error_count) ||
+    !isNonNegativeInteger(value.fatal_count) ||
+    value.error_count + value.fatal_count !== value.issue_count ||
+    typeof value.truncated !== "boolean"
+  ) {
+    return false;
+  }
+
+  if (value.latest_seen_at !== null) {
+    if (
+      typeof value.latest_seen_at !== "string" ||
+      !formatHealthTimestamp(value.latest_seen_at)
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function getCriticalErrorsHealthPresentation(
+  status: HealthStatus | null | undefined,
+  count: number | null | undefined,
+  details: unknown,
+): CriticalErrorsHealthPresentation | null {
+  if (
+    status === "not_configured" ||
+    !isRecord(details) ||
+    !isNonNegativeInteger(count)
+  ) {
+    return null;
+  }
+
+  const snapshot = details.critical_errors;
+
+  if (!isValidCriticalErrorsSnapshot(snapshot) || snapshot.issue_count !== count) {
+    return null;
+  }
+
+  const expectedStatus = snapshot.fatal_count > 0
+    ? "critical"
+    : snapshot.error_count > 0
+    ? "degraded"
+    : "healthy";
+
+  if (status !== expectedStatus) {
+    return null;
+  }
+
+  const issueLabel = snapshot.truncated
+    ? `${snapshot.issue_count}+ active issues`
+    : `${snapshot.issue_count} active ${snapshot.issue_count === 1 ? "issue" : "issues"}`;
+  const latestSeenLabel = formatHealthTimestamp(snapshot.latest_seen_at);
+
+  return {
+    summary: `Sentry · ${issueLabel}`,
+    detail: snapshot.issue_count === 0
+      ? "No unresolved error/fatal issues · last 24h"
+      : `${snapshot.error_count} error · ${snapshot.fatal_count} fatal · last 24h${
+        latestSeenLabel ? ` · latest ${latestSeenLabel}` : ""
+      }`,
   };
 }
 

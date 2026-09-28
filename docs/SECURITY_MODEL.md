@@ -77,6 +77,8 @@ Health UI
 → server-side Vault credential resolution
 → Vercel deployment request when a resolved credential is available
 → normalized deployment signal
+→ Sentry Issues request when a resolved credential is available
+→ normalized Critical Errors signal
 → controlled HTTP request
 → service-role controlled project_health write
 → RLS read by UI
@@ -89,11 +91,14 @@ JavaScript. `service role` создаётся и используется тол
 используется для authorization и не попадает в browser.
 
 `project_health` остаётся единственным canonical source для текущего Health snapshot.
-HTTP, SSL и Deployment Health обновляются как независимые signals. Пока остальные
-сигналы не реализованы или Vercel connection не имеет resolved Vault credential,
-`overall_status` остаётся `unknown`; frontend не выводит `healthy` только из HTTP.
+HTTP, SSL, Deployment и Critical Errors обновляются как независимые signals. Пока
+остальные сигналы не реализованы или provider connection не имеет resolved Vault
+credential, соответствующий signal остаётся `unknown`/`not_configured`; frontend не
+выводит `healthy` только из HTTP.
 Vercel provider failures сохраняют deployment как `unknown`, не раскрывают provider
-response и не перетирают HTTP/SSL fields. Redirect targets проходят повторную validation;
+response и не перетирают HTTP/SSL fields. Sentry provider failures сохраняют Critical
+Errors как `unknown`, удаляют stale Sentry details и не раскрывают raw issue response.
+Redirect targets проходят повторную validation;
 localhost, private/reserved IP и internal hostnames отклоняются. Проверка снижает
 SSRF-риск, но не заявляет абсолютную DNS-rebinding immunity, поскольку стандартный
 `fetch` выполняет собственное DNS connection resolution. Browser direct writes в
@@ -531,6 +536,10 @@ server-side resolver. `provider_connections.credential_ref` имеет тип UU
 audit/logs или browser-readable columns. Resolver читает только `decrypted_secret` по
 одному UUID через `SUPABASE_DB_URL` внутри Edge Function. Browser roles не имеют доступа
 к Vault schema/view и не могут вызвать secret-returning RPC (такого RPC нет).
+
+Sentry credential используется только для server-side Authorization к Sentry. В
+`project_health.details.critical_errors` сохраняется только агрегат за 24 часа;
+issue title, message, stack, culprit, user data и raw provider response не сохраняются.
 
 ---
 

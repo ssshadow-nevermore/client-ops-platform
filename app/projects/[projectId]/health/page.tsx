@@ -12,6 +12,7 @@ import {
 import { getProjectRequestContext } from "@/lib/projects/get-project-request-context";
 import {
   formatHealthTimestamp,
+  getCriticalErrorsHealthPresentation,
   getDeploymentHealthPresentation,
   getHealthStatusLabel,
   getProjectHealth,
@@ -86,6 +87,13 @@ export default async function HealthPage({ params }: HealthPageProps) {
     : null;
   const deploymentDetails = health
     ? getDeploymentHealthPresentation(health.deployment_status, health.details)
+    : null;
+  const criticalErrorsDetails = health
+    ? getCriticalErrorsHealthPresentation(
+      health.critical_errors_status,
+      health.critical_error_count,
+      health.details,
+    )
     : null;
 
   return (
@@ -213,11 +221,22 @@ export default async function HealthPage({ params }: HealthPageProps) {
               status={health.critical_errors_status}
               title="Critical Errors"
             >
-              <div className="health-detail-row">
-                {health.critical_error_count === null
-                  ? "Error count not recorded"
-                  : `${health.critical_error_count} critical errors recorded`}
-              </div>
+              {criticalErrorsDetails ? (
+                <>
+                  <div className="health-detail-row">
+                    <strong>{criticalErrorsDetails.summary}</strong>
+                  </div>
+                  <div className="health-detail-muted">
+                    {criticalErrorsDetails.detail}
+                  </div>
+                </>
+              ) : (
+                <div className="health-detail-row">
+                  {health.critical_errors_status === "not_configured"
+                    ? "Not configured"
+                    : "Error count not recorded"}
+                </div>
+              )}
             </HealthSignalCard>
 
             <HealthSignalCard

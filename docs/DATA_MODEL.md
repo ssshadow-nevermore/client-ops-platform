@@ -908,6 +908,22 @@ updated_at
 
 Это быстрый summary для dashboard. Dashboard не читает health status из `projects`.
 
+При подключённом Sentry `details.critical_errors` содержит только безопасный агрегат:
+
+```text
+provider
+window = "24h"
+issue_count
+error_count
+fatal_count
+truncated
+latest_seen_at
+```
+
+Заголовки, названия, сообщения, stack traces, culprit, user data и другие raw issue
+поля в `project_health` не сохраняются. При provider failure статус Critical Errors
+становится `unknown`, а устаревший `details.critical_errors` удаляется.
+
 ---
 
 # 26. health_checks
